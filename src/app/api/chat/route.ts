@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { getSystemPrompt } from '@/lib/ai/prompt-helper'
+import { enhanceUserPrompt } from '@/lib/ai/prompt-enhancer'
 import { AIProvider, PromptType } from '@prisma/client'
 
 const chatSchema = z.object({
@@ -23,19 +24,26 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { message, provider, projectId } = chatSchema.parse(body)
 
+    // Enhance the user message for better chat responses
+    const enhancedMessage = await enhanceUserPrompt(message, {
+      userIntent: 'modify',
+      projectType: 'website'
+    })
+
     await logger.info('Chat request received', {
       userId: session.user.id,
       provider,
-      messageLength: message.length,
+      originalMessageLength: message.length,
+      enhancedMessageLength: enhancedMessage.length,
       projectId
     })
 
     let aiResponse: string
 
     if (provider === 'openai') {
-      aiResponse = await getOpenAIResponse(message, projectId)
+      aiResponse = await getOpenAIResponse(enhancedMessage, projectId)
     } else if (provider === 'gemini') {
-      aiResponse = await getGeminiResponse(message, projectId)
+      aiResponse = await getGeminiResponse(enhancedMessage, projectId)
     } else {
       throw new Error(`Unsupported provider: ${provider}`)
     }

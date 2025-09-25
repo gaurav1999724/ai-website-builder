@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { FileTree, buildFileTree, FileNode } from './file-tree'
-import { MonacoEditor } from './monaco-editor'
+import MonacoEditor from '@monaco-editor/react'
 import { 
   Code, 
   Eye, 
@@ -15,7 +15,8 @@ import {
   ExternalLink, 
   FileText,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Save
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -66,6 +67,19 @@ export function CodeViewer({
     }
   }, [files, selectedFile])
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault()
+        handleFileSave()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [selectedFile])
+
   const handleFileSelect = (node: FileNode) => {
     if (node.type === 'file') {
       const file = files.find(f => f.path === node.path)
@@ -81,9 +95,9 @@ export function CodeViewer({
     }
   }
 
-  const handleFileSave = (content: string) => {
+  const handleFileSave = () => {
     if (selectedFile && onFileSave) {
-      onFileSave(selectedFile.id, content)
+      onFileSave(selectedFile.id, selectedFile.content)
       toast.success('File saved successfully')
     }
   }
@@ -157,6 +171,18 @@ export function CodeViewer({
             </CardTitle>
             
             <div className="flex items-center space-x-2">
+              {selectedFile && onFileSave && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleFileSave}
+                  title="Save file (Ctrl+S)"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </Button>
+              )}
+              
               <Button
                 variant="outline"
                 size="sm"
@@ -216,13 +242,216 @@ export function CodeViewer({
                 <div className="flex-1">
                   {selectedFile ? (
                     <MonacoEditor
+                      height="100%"
                       value={selectedFile.content}
                       language={getLanguageFromType(selectedFile.type)}
-                      onChange={handleFileContentChange}
-                      onSave={handleFileSave}
-                      filePath={selectedFile.path}
-                      onPreview={selectedFile.type === 'HTML' ? handlePreview : undefined}
-                      height="100%"
+                      theme="vs-dark"
+                      path={selectedFile.path}
+                      loading={<div className="flex items-center justify-center h-full text-muted-foreground">Loading editor...</div>}
+                      options={{
+                        automaticLayout: true,
+                        acceptSuggestionOnCommitCharacter: true,
+                        acceptSuggestionOnEnter: "on",
+                        accessibilitySupport: "auto",
+                        accessibilityPageSize: 10,
+                        ariaLabel: `Code editor for ${selectedFile.path}`,
+                        ariaRequired: false,
+                        screenReaderAnnounceInlineSuggestion: true,
+                        autoClosingBrackets: "languageDefined",
+                        autoClosingComments: "languageDefined",
+                        autoClosingDelete: "auto",
+                        autoClosingOvertype: "auto",
+                        autoClosingQuotes: "languageDefined",
+                        autoIndent: "full",
+                        autoSurround: "languageDefined",
+                        bracketPairColorization: {
+                          enabled: true,
+                          independentColorPoolPerBracketType: false,
+                        },
+                        bracketPairGuides: {
+                          bracketPairs: false,
+                          bracketPairsHorizontal: "active",
+                          highlightActiveBracketPair: true,
+                          indentation: true,
+                          highlightActiveIndentation: true,
+                        },
+                        stickyTabStops: false,
+                        codeLens: true,
+                        colorDecorators: true,
+                        colorDecoratorActivatedOn: "clickAndHover",
+                        colorDecoratorsLimit: 500,
+                        comments: {
+                          insertSpace: true,
+                          ignoreEmptyLines: true,
+                        },
+                        cursorBlinking: "blink",
+                        cursorSmoothCaretAnimation: "off",
+                        cursorStyle: "line",
+                        dragAndDrop: true,
+                        emptySelectionClipboard: true,
+                        dropIntoEditor: {
+                          enabled: true,
+                          showDropSelector: "afterDrop",
+                        },
+                        stickyScroll: {
+                          enabled: true,
+                          maxLineCount: 5,
+                          defaultModel: "outlineModel",
+                          scrollWithEditor: true,
+                        },
+                        experimentalWhitespaceRendering: "svg",
+                        fastScrollSensitivity: 5,
+                        find: {
+                          cursorMoveOnType: true,
+                          seedSearchStringFromSelection: "always",
+                          autoFindInSelection: "never",
+                          globalFindClipboard: false,
+                          addExtraSpaceOnTop: true,
+                          loop: true,
+                        },
+                        folding: true,
+                        foldingStrategy: "auto",
+                        foldingHighlight: true,
+                        fontFamily: "Consolas, 'Courier New', monospace",
+                        fontSize: 14,
+                        fontWeight: "normal",
+                        glyphMargin: true,
+                        gotoLocation: {
+                          multipleDefinitions: "peek",
+                          multipleTypeDefinitions: "peek",
+                          multipleDeclarations: "peek",
+                          multipleImplementations: "peek",
+                          multipleReferences: "peek",
+                          alternativeDefinitionCommand: "editor.action.goToReferences",
+                          alternativeTypeDefinitionCommand: "editor.action.goToReferences",
+                          alternativeDeclarationCommand: "editor.action.goToReferences",
+                        },
+                        hover: {
+                          enabled: true,
+                          delay: 300,
+                          sticky: true,
+                          hidingDelay: 300,
+                          above: true,
+                        },
+                        lightbulb: {
+                          enabled: "onCode",
+                        },
+                        lineDecorationsWidth: 10,
+                        lineNumbers: "on",
+                        lineNumbersMinChars: 5,
+                        links: true,
+                        matchBrackets: "always",
+                        minimap: {
+                          enabled: true,
+                          autohide: false,
+                          size: "proportional",
+                          side: "right",
+                          showSlider: "mouseover",
+                          scale: 1,
+                          renderCharacters: true,
+                          maxColumn: 120,
+                          showRegionSectionHeaders: true,
+                          showMarkSectionHeaders: true,
+                          sectionHeaderFontSize: 9,
+                          sectionHeaderLetterSpacing: 1,
+                        },
+                        mouseStyle: "text",
+                        multiCursorMergeOverlapping: true,
+                        multiCursorModifier: "alt",
+                        multiCursorPaste: "spread",
+                        multiCursorLimit: 10000,
+                        occurrencesHighlight: "singleFile",
+                        overviewRulerBorder: true,
+                        overviewRulerLanes: 2,
+                        parameterHints: {
+                          enabled: true,
+                          cycle: true,
+                        },
+                        peekWidgetDefaultFocus: "tree",
+                        quickSuggestions: {
+                          other: "on",
+                          comments: "off",
+                          strings: "off",
+                        },
+                        quickSuggestionsDelay: 10,
+                        readOnly: false,
+                        renderControlCharacters: true,
+                        renderFinalNewline: "on",
+                        renderLineHighlight: "line",
+                        renderValidationDecorations: "editable",
+                        renderWhitespace: "selection",
+                        revealHorizontalRightPadding: 15,
+                        roundedSelection: true,
+                        scrollbar: {
+                          vertical: "auto",
+                          horizontal: "auto",
+                          verticalScrollbarSize: 14,
+                          horizontalScrollbarSize: 12,
+                        },
+                        scrollBeyondLastLine: true,
+                        selectionClipboard: true,
+                        selectionHighlight: true,
+                        selectOnLineNumbers: true,
+                        showFoldingControls: "mouseover",
+                        showUnused: true,
+                        showDeprecated: true,
+                        inlayHints: {
+                          enabled: "on",
+                          fontSize: 0,
+                          fontFamily: "",
+                          padding: false,
+                        },
+                        snippetSuggestions: "inline",
+                        smoothScrolling: false,
+                        suggest: {
+                          insertMode: "insert",
+                          filterGraceful: true,
+                          showIcons: true,
+                          showInlineDetails: true,
+                          showMethods: true,
+                          showFunctions: true,
+                          showClasses: true,
+                          showVariables: true,
+                          showModules: true,
+                          showProperties: true,
+                          showEvents: true,
+                          showOperators: true,
+                          showValues: true,
+                          showEnums: true,
+                          showEnumMembers: true,
+                          showKeywords: true,
+                          showSnippets: true,
+                        },
+                        inlineSuggest: {
+                          enabled: true,
+                          showToolbar: "onHover",
+                          suppressSuggestions: false,
+                          fontFamily: "default",
+                        },
+                        wordWrap: "off",
+                        wordWrapColumn: 80,
+                      }}
+                      onChange={(value) => {
+                        if (value !== undefined) {
+                          handleFileContentChange(value)
+                        }
+                      }}
+                      onMount={(editor) => {
+                        // Add Ctrl+S shortcut for save
+                        editor.addCommand(1 | 49, () => {
+                          handleFileSave()
+                        })
+                        
+                        // Set accessibility attributes
+                        const editorElement = editor.getDomNode()
+                        if (editorElement) {
+                          editorElement.setAttribute('id', `monaco-editor-${selectedFile.id}`)
+                          editorElement.setAttribute('name', `monaco-editor-${selectedFile.path}`)
+                          editorElement.setAttribute('role', 'textbox')
+                          editorElement.setAttribute('aria-label', `Code editor for ${selectedFile.path}`)
+                          editorElement.setAttribute('aria-multiline', 'true')
+                        }
+                      }}
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -242,6 +471,7 @@ export function CodeViewer({
                   <iframe
                     srcDoc={selectedFile.content}
                     className="w-full h-full border-0"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-top-navigation-by-user-activation"
                     title="Preview"
                   />
                 ) : (

@@ -55,8 +55,11 @@ export async function GET(
       htmlContent = `<!DOCTYPE html>\n<html lang="en">\n${htmlContent}\n</html>`
     }
 
-    // Embed CSS
+    // Embed CSS (preserve external CSS links like fonts)
     if (cssFile) {
+      // Remove only local CSS file links, keep external ones (fonts, CDNs)
+      htmlContent = htmlContent.replace(/<link[^>]*rel=["']stylesheet["'][^>]*href=["'][^"']*\.css["'][^>]*>/gi, '')
+      
       const cssEmbed = `<style>\n${cssFile.content}\n</style>`
       if (htmlContent.includes('</head>')) {
         htmlContent = htmlContent.replace('</head>', `${cssEmbed}\n</head>`)
@@ -95,7 +98,10 @@ export async function GET(
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
-        'Expires': '0'
+        'Expires': '0',
+        'Content-Security-Policy': "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https: fonts.googleapis.com; font-src 'self' https: fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'self';",
+        'X-Frame-Options': 'SAMEORIGIN',
+        'X-Content-Type-Options': 'nosniff'
       }
     })
 

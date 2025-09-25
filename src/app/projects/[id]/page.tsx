@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CodeViewer } from '@/components/code-editor/code-viewer'
+import MonacoEditor from '@monaco-editor/react'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { 
   ArrowLeft, 
@@ -44,7 +45,11 @@ import {
   Edit3,
   CheckCircle2,
   XCircle,
-  Clock3
+  Clock3,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatRelativeTime } from '@/lib/utils'
@@ -88,6 +93,10 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isModifying, setIsModifying] = useState(false)
   const [modificationPrompt, setModificationPrompt] = useState('')
+  const [inputMode, setInputMode] = useState<'modify' | 'chat'>('chat')
+  const [isGettingSuggestion, setIsGettingSuggestion] = useState(false)
+  const [suggestionResponse, setSuggestionResponse] = useState('')
+  const [showSuggestion, setShowSuggestion] = useState(false)
   const       [promptHistory, setPromptHistory] = useState<Array<{
         id: string
         prompt: string
@@ -117,6 +126,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   ])
   const [selectedFile, setSelectedFile] = useState<any>(null)
   const [fileContent, setFileContent] = useState('')
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState<string>('')
 
   const chatMessagesRef = useRef<HTMLDivElement>(null)
@@ -137,6 +147,18 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   }, [promptHistory])
 
   // Load prompt history from API
+  const getLanguageFromType = (type: string): string => {
+    const typeMap: Record<string, string> = {
+      'HTML': 'html',
+      'CSS': 'css',
+      'JAVASCRIPT': 'javascript',
+      'TYPESCRIPT': 'typescript',
+      'JSON': 'json',
+      'MARKDOWN': 'markdown',
+    }
+    return typeMap[type] || 'plaintext'
+  }
+
   const fetchPromptHistory = async () => {
     if (!project) return
     
@@ -157,9 +179,15 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     if (project) {
       fetchPromptHistory()
       
-      // Auto-select the first file if none is selected
+      // Auto-select the first file if none is selected (prioritize index files)
       if (!selectedFile && project.files && project.files.length > 0) {
-        const firstFile = project.files[0]
+        // Find index file first, otherwise use first file
+        const indexFile = project.files.find(file => 
+          file.path.toLowerCase().includes('index.') || 
+          file.path.toLowerCase().endsWith('index.html') ||
+          file.path.toLowerCase().endsWith('index.js')
+        )
+        const firstFile = indexFile || project.files[0]
         console.log('Auto-selecting first file:', firstFile.path, 'Content length:', firstFile.content?.length)
         setSelectedFile(firstFile)
         setFileContent(firstFile.content || '')
@@ -206,9 +234,15 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       if (data.project) {
         setProject(data.project)
         
-        // Select first file by default
+        // Select first file by default (prioritize index files)
         if (data.project.files && data.project.files.length > 0) {
-          const firstFile = data.project.files[0]
+          // Find index file first, otherwise use first file
+          const indexFile = data.project.files.find((file: any) => 
+            file.path.toLowerCase().includes('index.') || 
+            file.path.toLowerCase().endsWith('index.html') ||
+            file.path.toLowerCase().endsWith('index.js')
+          )
+          const firstFile = indexFile || data.project.files[0]
           setSelectedFile(firstFile)
           setFileContent(firstFile.content)
         }
@@ -461,6 +495,45 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     }
   }
 
+  const handleAISuggestion = async () => {
+    if (!modificationPrompt.trim()) {
+      toast.error('Please enter a question or request')
+      return
+    }
+
+    setIsGettingSuggestion(true)
+    setShowSuggestion(false)
+    
+    try {
+      const response = await fetch(`/api/projects/${params.id}/suggest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: modificationPrompt,
+          provider: 'cerebras'
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setSuggestionResponse(data.suggestion)
+        setShowSuggestion(true)
+        setModificationPrompt('')
+        toast.success('AI suggestion generated successfully!')
+      } else {
+        throw new Error(data.error || 'Failed to get AI suggestion')
+      }
+    } catch (error) {
+      console.error('AI suggestion error:', error)
+      toast.error('Failed to get AI suggestion')
+    } finally {
+      setIsGettingSuggestion(false)
+    }
+  }
+
   const handleShare = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href)
@@ -474,6 +547,22 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     console.log('Selecting file:', file.path, 'Content length:', file.content?.length)
     setSelectedFile(file)
     setFileContent(file.content || '')
+  }
+
+  const toggleFolder = (folderPath: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(folderPath)) {
+        newSet.delete(folderPath)
+      } else {
+        newSet.add(folderPath)
+      }
+      return newSet
+    })
+  }
+
+  const isFolderExpanded = (folderPath: string) => {
+    return expandedFolders.has(folderPath)
   }
 
   const getCombinedHTMLContent = (targetFile?: string) => {
@@ -501,8 +590,8 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     
     // Inject CSS into the HTML
     if (cssContent) {
-      // Remove existing CSS links and add inline styles
-      htmlContent = htmlContent.replace(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi, '')
+      // Keep external CSS links (fonts, CDNs) but remove local CSS links
+      htmlContent = htmlContent.replace(/<link[^>]*rel=["']stylesheet["'][^>]*href=["'][^"']*\.css["'][^>]*>/gi, '')
       htmlContent = htmlContent.replace('</head>', `<style>\n${cssContent}\n</style>\n</head>`)
     }
     
@@ -594,6 +683,186 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       default:
         return <FileText className="h-4 w-4 text-gray-400" />
     }
+  }
+
+  // Organize files into folder structure
+  const organizeFilesIntoFolders = (files: any[]) => {
+    const folderStructure: any = {}
+    
+    files.forEach(file => {
+      const pathParts = file.path.split('/')
+      
+      // If file has explicit folder path, use it
+      if (pathParts.length > 1) {
+        let currentLevel = folderStructure
+        
+        // Navigate/create folder structure
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          const folderName = pathParts[i]
+          if (!currentLevel[folderName]) {
+            currentLevel[folderName] = { type: 'folder', children: {} }
+          }
+          currentLevel = currentLevel[folderName].children
+        }
+        
+        // Add file to the final folder
+        const fileName = pathParts[pathParts.length - 1]
+        currentLevel[fileName] = { type: 'file', ...file }
+      } else {
+        // If file is in root, organize by file type
+        const fileName = pathParts[0]
+        const extension = fileName.split('.').pop()?.toLowerCase()
+        
+        let folderName = 'Root'
+        switch (extension) {
+          case 'html':
+          case 'htm':
+            folderName = 'Pages'
+            break
+          case 'css':
+            folderName = 'Styles'
+            break
+          case 'js':
+          case 'jsx':
+          case 'ts':
+          case 'tsx':
+            folderName = 'Scripts'
+            break
+          case 'json':
+            folderName = 'Config'
+            break
+          case 'md':
+          case 'markdown':
+            folderName = 'Docs'
+            break
+          case 'png':
+          case 'jpg':
+          case 'jpeg':
+          case 'gif':
+          case 'svg':
+            folderName = 'Assets'
+            break
+          default:
+            folderName = 'Other'
+        }
+        
+        // Create folder if it doesn't exist
+        if (!folderStructure[folderName]) {
+          folderStructure[folderName] = { type: 'folder', children: {} }
+        }
+        
+        // Add file to the appropriate folder
+        folderStructure[folderName].children[fileName] = { type: 'file', ...file }
+      }
+    })
+    
+    return folderStructure
+  }
+
+  // Sort files to prioritize index files
+  const sortFilesWithIndexFirst = (structure: any) => {
+    const sortedStructure: any = {}
+    
+    Object.entries(structure).forEach(([name, item]: [string, any]) => {
+      if (item.type === 'folder') {
+        // Recursively sort folder contents
+        sortedStructure[name] = {
+          ...item,
+          children: sortFilesWithIndexFirst(item.children)
+        }
+      } else {
+        sortedStructure[name] = item
+      }
+    })
+    
+    // Sort entries: index files first, then alphabetically
+    const sortedEntries = Object.entries(sortedStructure).sort(([nameA, itemA], [nameB, itemB]) => {
+      const isIndexA = nameA.toLowerCase().startsWith('index.')
+      const isIndexB = nameB.toLowerCase().startsWith('index.')
+      
+      if (isIndexA && !isIndexB) return -1
+      if (!isIndexA && isIndexB) return 1
+      
+      // If both are index files or both are not, sort alphabetically
+      return nameA.localeCompare(nameB)
+    })
+    
+    // Convert back to object
+    const result: any = {}
+    sortedEntries.forEach(([name, item]) => {
+      result[name] = item
+    })
+    
+    return result
+  }
+
+  // Render folder structure recursively
+  const renderFolderStructure = (structure: any, level = 0, parentPath = '') => {
+    const items: JSX.Element[] = []
+    
+    Object.entries(structure).forEach(([name, item]: [string, any]) => {
+      const currentPath = parentPath ? `${parentPath}/${name}` : name
+      
+      if (item.type === 'folder') {
+        const isExpanded = isFolderExpanded(currentPath)
+        const hasChildren = Object.keys(item.children).length > 0
+        
+        // Render folder
+        items.push(
+          <div key={name} className="select-none">
+            <div 
+              className="flex items-center space-x-2 p-2 text-sm text-gray-400 cursor-pointer hover:bg-gray-700 hover:text-white transition-colors"
+              onClick={() => hasChildren && toggleFolder(currentPath)}
+            >
+              <div style={{ paddingLeft: `${level * 16}px` }} className="flex items-center space-x-2">
+                {hasChildren ? (
+                  isExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-gray-500" />
+                  )
+                ) : (
+                  <div className="w-4 h-4" />
+                )}
+                {isExpanded ? (
+                  <FolderOpen className="h-4 w-4 text-blue-400" />
+                ) : (
+                  <Folder className="h-4 w-4 text-blue-400" />
+                )}
+                <span className="font-medium">{name}</span>
+              </div>
+            </div>
+            {/* Render folder contents */}
+            {hasChildren && isExpanded && (
+              <div>
+                {renderFolderStructure(item.children, level + 1, currentPath)}
+              </div>
+            )}
+          </div>
+        )
+      } else {
+        // Render file
+        items.push(
+          <div
+            key={item.id}
+            onClick={() => handleFileSelect(item)}
+            className={`flex items-center space-x-2 p-2 rounded cursor-pointer text-sm transition-colors ${
+              selectedFile?.id === item.id
+                ? 'bg-blue-600 text-white'
+                : 'hover:bg-gray-700 text-gray-300'
+            }`}
+          >
+            <div style={{ paddingLeft: `${level * 16}px` }} className="flex items-center space-x-2">
+              <div className="w-4 h-4" /> {/* Spacer for alignment */}
+              {getFileIcon(item.path)}
+              <span className="truncate">{name}</span>
+            </div>
+          </div>
+        )
+      }
+    })
+    
+    return items
   }
 
   if (status === 'loading' || loading) {
@@ -690,21 +959,30 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                     variant="outline" 
                     size="sm" 
                     onClick={() => {
-                      const htmlFile = project?.files?.find(f => f.type === 'HTML')
-                      if (htmlFile) {
-                        const combinedContent = getCombinedHTMLContent(htmlFile.path)
-                        const newWindow = window.open('', '_blank')
-                        if (newWindow) {
-                          newWindow.document.write(combinedContent)
-                          newWindow.document.close()
-                        }
-                      }
+                      // Open the project preview in a new tab with proper URL
+                      const previewUrl = `/projects/${project?.id}/preview`
+                      window.open(previewUrl, '_blank')
                     }}
                     className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
                     title="Open Preview in New Window"
                   >
                     <Eye className="h-4 w-4 mr-2" />
                     Preview
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      // Open the project preview in fullscreen mode
+                      const fullscreenUrl = `/projects/${project?.id}/fullscreen`
+                      window.open(fullscreenUrl, '_blank')
+                    }}
+                    className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
+                    title="Open Fullscreen Preview"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Fullscreen
                   </Button>
                 </div>
                 
@@ -873,9 +1151,39 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
 
           {/* Input Area */}
           <div className="p-4 border-t border-gray-800 flex-shrink-0">
+            {/* Mode Toggle */}
+            <div className="flex items-center space-x-2 mb-3">
+              <Button
+                variant={inputMode === 'chat' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setInputMode('chat')}
+                className={`px-3 py-1 text-xs ${
+                  inputMode === 'chat' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                <MessageCircle className="h-3 w-3 mr-1" />
+                Chat
+              </Button>
+              <Button
+                variant={inputMode === 'modify' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setInputMode('modify')}
+                className={`px-3 py-1 text-xs ${
+                  inputMode === 'modify' 
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                <Wrench className="h-3 w-3 mr-1" />
+                Modify
+              </Button>
+            </div>
+
             <div className="relative">
               <textarea
-                placeholder="Ask AI..."
+                placeholder={inputMode === 'chat' ? "Ask AI for suggestions about your project..." : "Describe the changes you want to make..."}
                 value={modificationPrompt}
                 onChange={(e) => setModificationPrompt(e.target.value)}
                 className="w-full px-4 py-3 pr-20 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-gray-900 text-white placeholder-gray-400"
@@ -883,10 +1191,14 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    handleAIModification()
+                    if (inputMode === 'chat') {
+                      handleAISuggestion()
+                    } else {
+                      handleAIModification()
+                    }
                   }
                 }}
-                disabled={isModifying}
+                disabled={isModifying || isGettingSuggestion}
               />
               <div className="absolute right-3 bottom-3 flex items-center space-x-2">
                 <Button 
@@ -906,12 +1218,16 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                   <Wrench className="h-4 w-4 text-gray-400" />
                 </Button>
                 <Button
-                  onClick={handleAIModification}
-                  disabled={isModifying || !modificationPrompt.trim()}
-                  className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Send message"
+                  onClick={inputMode === 'chat' ? handleAISuggestion : handleAIModification}
+                  disabled={(isModifying || isGettingSuggestion) || !modificationPrompt.trim()}
+                  className={`h-8 w-8 p-0 text-white disabled:opacity-50 disabled:cursor-not-allowed ${
+                    inputMode === 'chat' 
+                      ? 'bg-blue-600 hover:bg-blue-700' 
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                  title={inputMode === 'chat' ? "Get AI suggestion" : "Apply modification"}
                 >
-                  {isModifying ? (
+                  {(isModifying || isGettingSuggestion) ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Send className="h-4 w-4" />
@@ -919,6 +1235,65 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                 </Button>
               </div>
             </div>
+
+            {/* AI Suggestion Response */}
+            {showSuggestion && suggestionResponse && (
+              <div className="mt-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                      <span className="text-white text-sm font-medium">AI</span>
+                    </div>
+                    <h4 className="text-white font-medium">AI Suggestion</h4>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowSuggestion(false)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="prose prose-invert max-w-none">
+                  <div className="text-gray-300 whitespace-pre-wrap text-sm leading-relaxed">
+                    {suggestionResponse}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-700">
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setInputMode('modify')
+                        setModificationPrompt(suggestionResponse) // Use the actual AI suggestion content
+                        setShowSuggestion(false)
+                      }}
+                      className="bg-gray-700 text-white border-gray-600 hover:bg-gray-600"
+                    >
+                      <Wrench className="h-4 w-4 mr-2" />
+                      Apply Suggestions
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(suggestionResponse)
+                        toast.success('Suggestion copied to clipboard')
+                      }}
+                      className="bg-gray-700 text-white border-gray-600 hover:bg-gray-600"
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy
+                    </Button>
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    Generated by AI • {new Date().toLocaleTimeString()}
+                  </span>
+                </div>
+              </div>
+            )}
             
             {/* <div className="flex items-center justify-between mt-3">
               <div className="flex items-center space-x-4">
@@ -966,6 +1341,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                         className="w-full h-full border-0 rounded-lg"
                         title="Preview"
                         key={currentPage} // Force re-render when page changes
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-top-navigation-by-user-activation"
                       />
                     ) : (
                       <div className="flex items-center justify-center h-64">
@@ -1062,27 +1438,18 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                     {/* File Tree Sidebar */}
                     <div className="w-64 bg-gray-800 border-r border-gray-700 p-4">
                       <h3 className="text-sm font-medium text-white mb-3">Project Files</h3>
-                      <div className="space-y-1">
-                        {project.files?.map((file) => (
-                          <div
-                            key={file.id}
-                            onClick={() => handleFileSelect(file)}
-                            className={`flex items-center space-x-2 p-2 rounded cursor-pointer text-sm transition-colors ${
-                              selectedFile?.id === file.id
-                                ? 'bg-blue-600 text-white'
-                                : 'hover:bg-gray-700 text-gray-300'
-                            }`}
-                          >
-                            {getFileIcon(file.path)}
-                            <span className="truncate">{file.path.split('/').pop() || file.path}</span>
-                          </div>
-                        ))}
+                      <div className="space-y-1 overflow-y-auto max-h-[calc(100vh-200px)]">
+                        {project.files && project.files.length > 0 ? (
+                          renderFolderStructure(sortFilesWithIndexFirst(organizeFilesIntoFolders(project.files)))
+                        ) : (
+                          <div className="text-gray-500 text-sm p-2">No files available</div>
+                        )}
                       </div>
                     </div>
 
                     {/* Code Editor Area */}
                     <div className="flex-1 bg-gray-900 flex flex-col">
-                      <div className="flex-1 p-4">
+                      <div className="flex-1 p-0">
                         <div className="bg-gray-800 rounded-lg h-full flex flex-col">
                           <div className="flex items-center space-x-2 p-4 border-b border-gray-700">
                             <div className="flex space-x-1">
@@ -1095,18 +1462,221 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                             </span>
                           </div>
                           <div className="flex-1 p-4">
-                            <textarea
-                              value={fileContent}
-                              onChange={(e) => setFileContent(e.target.value)}
-                              className="w-full h-full bg-transparent text-white font-mono text-sm resize-none outline-none leading-relaxed"
-                              placeholder={selectedFile ? "Start editing..." : "Select a file to start editing..."}
-                              spellCheck={false}
-                              style={{ 
-                                minHeight: '400px',
-                                height: 'calc(100vh - 200px)',
-                                overflow: 'auto'
-                              }}
-                            />
+                            {selectedFile ? (
+                              <MonacoEditor
+                                height="calc(100vh - 200px)"
+                                value={fileContent}
+                                language={getLanguageFromType(selectedFile.type)}
+                                theme="vs-dark"
+                                path={selectedFile.path}
+                                options={{
+                                  automaticLayout: true,
+                                  acceptSuggestionOnCommitCharacter: true,
+                                  acceptSuggestionOnEnter: "on",
+                                  accessibilitySupport: "auto",
+                                  accessibilityPageSize: 10,
+                                  ariaLabel: `Code editor for ${selectedFile.path}`,
+                                  ariaRequired: false,
+                                  screenReaderAnnounceInlineSuggestion: true,
+                                  autoClosingBrackets: "languageDefined",
+                                  autoClosingComments: "languageDefined",
+                                  autoClosingDelete: "auto",
+                                  autoClosingOvertype: "auto",
+                                  autoClosingQuotes: "languageDefined",
+                                  autoIndent: "full",
+                                  autoSurround: "languageDefined",
+                                  bracketPairColorization: {
+                                    enabled: true,
+                                    independentColorPoolPerBracketType: false,
+                                  },
+                                  bracketPairGuides: {
+                                    bracketPairs: false,
+                                    bracketPairsHorizontal: "active",
+                                    highlightActiveBracketPair: true,
+                                    indentation: true,
+                                    highlightActiveIndentation: true,
+                                  },
+                                  stickyTabStops: false,
+                                  codeLens: true,
+                                  colorDecorators: true,
+                                  colorDecoratorActivatedOn: "clickAndHover",
+                                  colorDecoratorsLimit: 500,
+                                  comments: {
+                                    insertSpace: true,
+                                    ignoreEmptyLines: true,
+                                  },
+                                  cursorBlinking: "blink",
+                                  cursorSmoothCaretAnimation: "off",
+                                  cursorStyle: "line",
+                                  dragAndDrop: true,
+                                  emptySelectionClipboard: true,
+                                  dropIntoEditor: {
+                                    enabled: true,
+                                    showDropSelector: "afterDrop",
+                                  },
+                                  stickyScroll: {
+                                    enabled: true,
+                                    maxLineCount: 5,
+                                    defaultModel: "outlineModel",
+                                    scrollWithEditor: true,
+                                  },
+                                  experimentalWhitespaceRendering: "svg",
+                                  fastScrollSensitivity: 5,
+                                  find: {
+                                    cursorMoveOnType: true,
+                                    seedSearchStringFromSelection: "always",
+                                    autoFindInSelection: "never",
+                                    globalFindClipboard: false,
+                                    addExtraSpaceOnTop: true,
+                                    loop: true,
+                                  },
+                                  folding: true,
+                                  foldingStrategy: "auto",
+                                  foldingHighlight: true,
+                                  fontFamily: "Consolas, 'Courier New', monospace",
+                                  fontSize: 14,
+                                  fontWeight: "normal",
+                                  glyphMargin: true,
+                                  gotoLocation: {
+                                    multipleDefinitions: "peek",
+                                    multipleTypeDefinitions: "peek",
+                                    multipleDeclarations: "peek",
+                                    multipleImplementations: "peek",
+                                    multipleReferences: "peek",
+                                    alternativeDefinitionCommand: "editor.action.goToReferences",
+                                    alternativeTypeDefinitionCommand: "editor.action.goToReferences",
+                                    alternativeDeclarationCommand: "editor.action.goToReferences",
+                                  },
+                                  hover: {
+                                    enabled: true,
+                                    delay: 300,
+                                    sticky: true,
+                                    hidingDelay: 300,
+                                    above: true,
+                                  },
+                                  lightbulb: {
+                                    enabled: "onCode",
+                                  },
+                                  lineDecorationsWidth: 10,
+                                  lineNumbers: "on",
+                                  lineNumbersMinChars: 5,
+                                  links: true,
+                                  matchBrackets: "always",
+                                  minimap: {
+                                    enabled: true,
+                                    autohide: false,
+                                    size: "proportional",
+                                    side: "right",
+                                    showSlider: "mouseover",
+                                    scale: 1,
+                                    renderCharacters: true,
+                                    maxColumn: 120,
+                                    showRegionSectionHeaders: true,
+                                    showMarkSectionHeaders: true,
+                                    sectionHeaderFontSize: 9,
+                                    sectionHeaderLetterSpacing: 1,
+                                  },
+                                  mouseStyle: "text",
+                                  multiCursorMergeOverlapping: true,
+                                  multiCursorModifier: "alt",
+                                  multiCursorPaste: "spread",
+                                  multiCursorLimit: 10000,
+                                  occurrencesHighlight: "singleFile",
+                                  overviewRulerBorder: true,
+                                  overviewRulerLanes: 2,
+                                  parameterHints: {
+                                    enabled: true,
+                                    cycle: true,
+                                  },
+                                  peekWidgetDefaultFocus: "tree",
+                                  quickSuggestions: {
+                                    other: "on",
+                                    comments: "off",
+                                    strings: "off",
+                                  },
+                                  quickSuggestionsDelay: 10,
+                                  readOnly: false,
+                                  renderControlCharacters: true,
+                                  renderFinalNewline: "on",
+                                  renderLineHighlight: "line",
+                                  renderValidationDecorations: "editable",
+                                  renderWhitespace: "selection",
+                                  revealHorizontalRightPadding: 15,
+                                  roundedSelection: true,
+                                  scrollbar: {
+                                    vertical: "auto",
+                                    horizontal: "auto",
+                                    verticalScrollbarSize: 14,
+                                    horizontalScrollbarSize: 12,
+                                  },
+                                  scrollBeyondLastLine: true,
+                                  selectionClipboard: true,
+                                  selectionHighlight: true,
+                                  selectOnLineNumbers: true,
+                                  showFoldingControls: "mouseover",
+                                  showUnused: true,
+                                  showDeprecated: true,
+                                  inlayHints: {
+                                    enabled: "on",
+                                    fontSize: 0,
+                                    fontFamily: "",
+                                    padding: false,
+                                  },
+                                  snippetSuggestions: "inline",
+                                  smoothScrolling: false,
+                                  suggest: {
+                                    insertMode: "insert",
+                                    filterGraceful: true,
+                                    showIcons: true,
+                                    showInlineDetails: true,
+                                    showMethods: true,
+                                    showFunctions: true,
+                                    showClasses: true,
+                                    showVariables: true,
+                                    showModules: true,
+                                    showProperties: true,
+                                    showEvents: true,
+                                    showOperators: true,
+                                    showValues: true,
+                                    showEnums: true,
+                                    showEnumMembers: true,
+                                    showKeywords: true,
+                                    showSnippets: true,
+                                  },
+                                  inlineSuggest: {
+                                    enabled: true,
+                                    showToolbar: "onHover",
+                                    suppressSuggestions: false,
+                                    fontFamily: "default",
+                                  },
+                                  wordWrap: "off",
+                                  wordWrapColumn: 80,
+                                }}
+                                onChange={(value) => {
+                                  if (value !== undefined) {
+                                    setFileContent(value)
+                                  }
+                                }}
+                                onMount={(editor) => {
+                                  // Set accessibility attributes
+                                  const editorElement = editor.getDomNode()
+                                  if (editorElement && selectedFile) {
+                                    editorElement.setAttribute('id', `monaco-editor-${selectedFile.id}`)
+                                    editorElement.setAttribute('name', `monaco-editor-${selectedFile.path}`)
+                                    editorElement.setAttribute('role', 'textbox')
+                                    editorElement.setAttribute('aria-label', `Code editor for ${selectedFile.path}`)
+                                    editorElement.setAttribute('aria-multiline', 'true')
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <div className="flex items-center justify-center h-full text-muted-foreground">
+                                <div className="text-center">
+                                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                  <p>Select a file to start editing...</p>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

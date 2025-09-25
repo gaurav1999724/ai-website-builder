@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ProfileDropdown } from '@/components/profile-dropdown'
+import MonacoEditor from '@monaco-editor/react'
 import { 
   ArrowLeft, 
   Eye, 
@@ -27,7 +28,8 @@ import {
   Monitor,
   Smartphone,
   Tablet,
-  X
+  X,
+  ExternalLink
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatRelativeTime } from '@/lib/utils'
@@ -55,6 +57,7 @@ interface FileNode {
   content?: string
   children?: FileNode[]
   fileId?: string
+  fileType?: string
 }
 
 export default function CodeEditorPage({ params }: { params: { id: string } }) {
@@ -65,13 +68,13 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [fileContent, setFileContent] = useState('')
   const [currentPage, setCurrentPage] = useState<string>('')
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [openTabs, setOpenTabs] = useState<Array<{id: string, name: string, path: string, content: string}>>([])
   const [activeTab, setActiveTab] = useState<string | null>(null)
-  const [scrollPosition, setScrollPosition] = useState({ scrollTop: 0, scrollLeft: 0 })
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -92,6 +95,45 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
       ))
     }
   }, [fileContent, activeTab])
+
+  const getLanguageFromType = (type: string, filePath?: string): string => {
+    const typeMap: Record<string, string> = {
+      'HTML': 'html',
+      'CSS': 'css',
+      'JAVASCRIPT': 'javascript',
+      'TYPESCRIPT': 'typescript',
+      'JSON': 'json',
+      'MARKDOWN': 'markdown',
+      'JavaScript': 'javascript',
+      'TypeScript': 'typescript',
+      'TEXT': 'plaintext',
+    }
+    
+    // If type is mapped, return it
+    if (typeMap[type]) {
+      return typeMap[type]
+    }
+    
+    // Fallback: detect from file extension
+    if (filePath) {
+      const extension = filePath.split('.').pop()?.toLowerCase()
+      const extensionMap: Record<string, string> = {
+        'html': 'html',
+        'htm': 'html',
+        'css': 'css',
+        'js': 'javascript',
+        'jsx': 'javascript',
+        'ts': 'typescript',
+        'tsx': 'typescript',
+        'json': 'json',
+        'md': 'markdown',
+        'markdown': 'markdown',
+      }
+      return extensionMap[extension || ''] || 'plaintext'
+    }
+    
+    return 'plaintext'
+  }
 
   // Handle iframe navigation messages
   useEffect(() => {
@@ -121,15 +163,22 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
       if (data.project) {
         setProject(data.project)
         
-        // Select first file by default
+        // Select first file by default (prioritize index files)
         if (data.project.files.length > 0) {
-          const firstFile = data.project.files[0]
+          // Find index file first, otherwise use first file
+          const indexFile = data.project.files.find((file: any) => 
+            file.path.toLowerCase().includes('index.') || 
+            file.path.toLowerCase().endsWith('index.html') ||
+            file.path.toLowerCase().endsWith('index.js')
+          )
+          const firstFile = indexFile || data.project.files[0]
           setSelectedFile({
             name: firstFile.path.split('/').pop() || firstFile.path,
             type: 'file',
             path: firstFile.path,
             content: firstFile.content,
-            fileId: firstFile.id
+            fileId: firstFile.id,
+            fileType: firstFile.type || getFileType(firstFile.path)
           })
           setFileContent(firstFile.content)
         }
@@ -182,6 +231,191 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
     }
   }
 
+  // Organize files into folder structure
+  const organizeFilesIntoFolders = (files: any[]) => {
+    const folderStructure: any = {}
+    
+    files.forEach(file => {
+      const pathParts = file.path.split('/')
+      
+      // If file has explicit folder path, use it
+      if (pathParts.length > 1) {
+        let currentLevel = folderStructure
+        
+        // Navigate/create folder structure
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          const folderName = pathParts[i]
+          if (!currentLevel[folderName]) {
+            currentLevel[folderName] = { type: 'folder', children: {} }
+          }
+          currentLevel = currentLevel[folderName].children
+        }
+        
+        // Add file to the final folder
+        const fileName = pathParts[pathParts.length - 1]
+        currentLevel[fileName] = { type: 'file', ...file }
+      } else {
+        // If file is in root, organize by file type
+        const fileName = pathParts[0]
+        const extension = fileName.split('.').pop()?.toLowerCase()
+        
+        let folderName = 'Root'
+        switch (extension) {
+          case 'html':
+          case 'htm':
+            folderName = 'Pages'
+            break
+          case 'css':
+            folderName = 'Styles'
+            break
+          case 'js':
+          case 'jsx':
+          case 'ts':
+          case 'tsx':
+            folderName = 'Scripts'
+            break
+          case 'json':
+            folderName = 'Config'
+            break
+          case 'md':
+          case 'markdown':
+            folderName = 'Docs'
+            break
+          case 'png':
+          case 'jpg':
+          case 'jpeg':
+          case 'gif':
+          case 'svg':
+            folderName = 'Assets'
+            break
+          default:
+            folderName = 'Other'
+        }
+        
+        // Create folder if it doesn't exist
+        if (!folderStructure[folderName]) {
+          folderStructure[folderName] = { type: 'folder', children: {} }
+        }
+        
+        // Add file to the appropriate folder
+        folderStructure[folderName].children[fileName] = { type: 'file', ...file }
+      }
+    })
+    
+    return folderStructure
+  }
+
+  // Sort files to prioritize index files
+  const sortFilesWithIndexFirst = (structure: any) => {
+    const sortedStructure: any = {}
+    
+    Object.entries(structure).forEach(([name, item]: [string, any]) => {
+      if (item.type === 'folder') {
+        // Recursively sort folder contents
+        sortedStructure[name] = {
+          ...item,
+          children: sortFilesWithIndexFirst(item.children)
+        }
+      } else {
+        sortedStructure[name] = item
+      }
+    })
+    
+    // Sort entries: index files first, then alphabetically
+    const sortedEntries = Object.entries(sortedStructure).sort(([nameA, itemA], [nameB, itemB]) => {
+      const isIndexA = nameA.toLowerCase().startsWith('index.')
+      const isIndexB = nameB.toLowerCase().startsWith('index.')
+      
+      if (isIndexA && !isIndexB) return -1
+      if (!isIndexA && isIndexB) return 1
+      
+      // If both are index files or both are not, sort alphabetically
+      return nameA.localeCompare(nameB)
+    })
+    
+    // Convert back to object
+    const result: any = {}
+    sortedEntries.forEach(([name, item]) => {
+      result[name] = item
+    })
+    
+    return result
+  }
+
+  // Render folder structure recursively
+  const renderFolderStructure = (structure: any, level = 0, parentPath = '') => {
+    const items: JSX.Element[] = []
+    
+    Object.entries(structure).forEach(([name, item]: [string, any]) => {
+      const currentPath = parentPath ? `${parentPath}/${name}` : name
+      
+      if (item.type === 'folder') {
+        const isExpanded = isFolderExpanded(currentPath)
+        const hasChildren = Object.keys(item.children).length > 0
+        
+        // Render folder
+        items.push(
+          <div key={name} className="select-none">
+            <div 
+              className="flex items-center space-x-2 p-2 text-sm text-gray-400 cursor-pointer hover:bg-gray-700 hover:text-white transition-colors"
+              onClick={() => hasChildren && toggleFolder(currentPath)}
+            >
+              <div style={{ paddingLeft: `${level * 16}px` }} className="flex items-center space-x-2">
+                {hasChildren ? (
+                  isExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-gray-500" />
+                  )
+                ) : (
+                  <div className="w-4 h-4" />
+                )}
+                {isExpanded ? (
+                  <FolderOpen className="h-4 w-4 text-blue-400" />
+                ) : (
+                  <Folder className="h-4 w-4 text-blue-400" />
+                )}
+                {!sidebarCollapsed && (
+                  <span className="font-medium">{name}</span>
+                )}
+              </div>
+            </div>
+            {/* Render folder contents */}
+            {hasChildren && isExpanded && !sidebarCollapsed && (
+              <div>
+                {renderFolderStructure(item.children, level + 1, currentPath)}
+              </div>
+            )}
+          </div>
+        )
+      } else {
+        // Render file
+        items.push(
+          <div
+            key={item.id}
+            onClick={() => handleFileSelect(item)}
+            className={`flex items-center space-x-2 p-2 rounded cursor-pointer transition-colors ${
+              selectedFile?.fileId === item.id
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+            }`}
+            title={sidebarCollapsed ? (item.path.split('/').pop() || item.path) : undefined}
+          >
+            <div style={{ paddingLeft: `${level * 16}px` }} className="flex items-center space-x-2">
+              <div className="w-4 h-4" /> {/* Spacer for alignment */}
+              {getFileIcon(item.path)}
+              {!sidebarCollapsed && (
+                <span className="text-sm truncate">{name}</span>
+              )}
+            </div>
+          </div>
+        )
+      }
+    })
+    
+    return items
+  }
+
   const getFileType = (fileName: string) => {
     const extension = fileName.split('.').pop()?.toLowerCase()
     switch (extension) {
@@ -202,303 +436,10 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
     }
   }
 
-  const getSyntaxHighlightedCode = (code: string, filename: string) => {
-    try {
-      const ext = filename.split('.').pop()?.toLowerCase()
-      
-      if (ext === 'html' || ext === 'htm') {
-        return highlightHTML(code)
-      } else if (ext === 'css') {
-        return highlightCSS(code)
-      } else if (ext === 'js' || ext === 'jsx') {
-        return highlightJS(code)
-      } else if (ext === 'json') {
-        return highlightJSON(code)
-      }
-      
-      // Fallback: escape HTML and return plain text
-      return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    } catch (error) {
-      console.error('Syntax highlighting error:', error)
-      // Fallback: escape HTML and return plain text
-      return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    }
-  }
 
-  const highlightHTML = (code: string) => {
-    let highlighted = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-    
-    // Process HTML comments first
-    highlighted = highlighted.replace(/&lt;!--([\s\S]*?)--&gt;/g, '<span class="text-gray-500">&lt;!--$1--&gt;</span>')
-    
-    // Process DOCTYPE declarations
-    highlighted = highlighted.replace(/&lt;!DOCTYPE\s+([^&gt;]+)&gt;/gi, '&lt;!DOCTYPE <span class="text-purple-400">$1</span>&gt;')
-    
-    // Process HTML tags
-    highlighted = highlighted.replace(/&lt;(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b([^&gt;]*?)&gt;/g, (match, closing, tag, attrs) => {
-      const tagColor = 'text-red-400'  // HTML tags in red like VS Code
-      const attrColor = 'text-blue-400'  // Attributes in blue
-      const valueColor = 'text-green-400'  // Values in green
-      
-      let result = `&lt;${closing}<span class="${tagColor}">${tag}</span>`
-      
-      if (attrs && attrs.trim()) {
-        // Handle attributes with values
-        result += attrs.replace(/(\w+(?:-\w+)*)\s*=\s*(["'])([^"']*?)\2/g, (attrMatch: string, name: string, quote: string, value: string) => {
-          return ` <span class="${attrColor}">${name}</span>=${quote}<span class="${valueColor}">${value}</span>${quote}`
-        })
-        
-        // Handle boolean attributes (without values)
-        result = result.replace(/(\w+(?:-\w+)*)(?=\s|$)/g, (attrMatch: string) => {
-          // Only highlight if it's not already highlighted and not part of a value
-          if (!result.includes(`<span class="${attrColor}">${attrMatch}</span>`) && 
-              !result.includes(`<span class="${valueColor}">${attrMatch}</span>`)) {
-            return `<span class="${attrColor}">${attrMatch}</span>`
-          }
-          return attrMatch
-        })
-      }
-      
-      return result + '&gt;'
-    })
-    
-    // Highlight text content between tags (but not inside already highlighted spans)
-    highlighted = highlighted.replace(/(?<=&gt;)([^&lt;<]+)(?=&lt;)/g, (match, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match // Already inside a span, don't highlight
-      }
-      return `<span class="text-white">${match}</span>`
-    })
-    
-    return highlighted
-  }
 
-  const highlightCSS = (code: string) => {
-    // First, escape HTML characters
-    let highlighted = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-    
-    // Process in order to avoid conflicts
-    // 1. Comments first
-    highlighted = highlighted.replace(/\/\*([\s\S]*?)\*\//g, '<span class="text-gray-500">/*$1*/</span>')
-    
-    // 2. Strings (to avoid highlighting inside strings)
-    highlighted = highlighted.replace(/(["'`])([^"'`]*?)\1/g, '<span class="text-yellow-300">$1$2$1</span>')
-    
-    // 3. At-rules and media queries
-    const atRuleRegex = /@([a-zA-Z-]+)/g
-    highlighted = highlighted.replace(atRuleRegex, (match, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `<span class="text-purple-400">@${match.substring(1)}</span>`
-    })
-    
-    // 4. Selectors (but not if already highlighted)
-    const selectorRegex = /([.#]?[a-zA-Z][a-zA-Z0-9-]*)\s*\{/g
-    highlighted = highlighted.replace(selectorRegex, (match, selector, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `<span class="text-blue-400">${selector}</span> {`
-    })
-    
-    // 5. Properties (but not if already highlighted)
-    const propertyRegex = /([a-zA-Z-]+)\s*:/g
-    highlighted = highlighted.replace(propertyRegex, (match, property, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `<span class="text-green-400">${property}</span>:`
-    })
-    
-    // 6. Values (but not if already highlighted)
-    const valueRegex = /:\s*([^;]+);/g
-    highlighted = highlighted.replace(valueRegex, (match, value, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `: <span class="text-yellow-300">${value}</span>;`
-    })
-    
-    // 7. Numbers and units (but not if already highlighted)
-    const numberRegex = /(\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|pt|pc|in|cm|mm|ex|ch|vmin|vmax|deg|rad|grad|turn|s|ms|Hz|kHz|dpi|dpcm|dppx)?)/g
-    highlighted = highlighted.replace(numberRegex, (match, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `<span class="text-orange-400">${match}</span>`
-    })
-    
-    return highlighted
-  }
 
-  const highlightJS = (code: string) => {
-    // First, escape HTML characters
-    let highlighted = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-    
-    // Process in order to avoid conflicts
-    // 1. Comments first
-    highlighted = highlighted
-      .replace(/\/\/.*$/gm, '<span class="text-gray-500">$&</span>')
-      .replace(/\/\*([\s\S]*?)\*\//g, '<span class="text-gray-500">/*$1*/</span>')
-    
-    // 2. Strings and template literals
-    highlighted = highlighted
-      .replace(/(["'`])([^"'`]*?)\1/g, '<span class="text-yellow-300">$1$2$1</span>')
-      .replace(/(`[^`]*`)/g, '<span class="text-yellow-300">$1</span>')
-    
-    // 3. Keywords (avoiding already highlighted content)
-    const keywordRegex = /\b(function|const|let|var|if|else|for|while|return|class|import|export|from|async|await|try|catch|finally|throw|new|this|super|extends|implements|interface|type|enum|namespace|module|declare|public|private|protected|static|readonly|abstract|override|get|set|in|of|instanceof|typeof|void|null|undefined|true|false|break|continue|switch|case|default|do|with|debugger)\b/g
-    
-    highlighted = highlighted.replace(keywordRegex, (match, offset, string) => {
-      // Check if this match is inside a span (already highlighted)
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match // Already inside a span, don't highlight
-      }
-      return `<span class="text-purple-400">${match}</span>`
-    })
-    
-    // 4. Numbers (avoiding already highlighted content)
-    const numberRegex = /\b(\d+(?:\.\d+)?)\b/g
-    highlighted = highlighted.replace(numberRegex, (match, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `<span class="text-orange-400">${match}</span>`
-    })
-    
-    // 5. Functions (avoiding already highlighted content)
-    const functionRegex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?=\()/g
-    highlighted = highlighted.replace(functionRegex, (match, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `<span class="text-blue-400">${match}</span>`
-    })
-    
-    return highlighted
-  }
 
-  const highlightJSON = (code: string) => {
-    // First, escape HTML characters
-    let highlighted = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-    
-    // Process in order to avoid conflicts
-    // 1. String keys
-    const keyRegex = /("(?:[^"\\]|\\.)*")\s*:/g
-    highlighted = highlighted.replace(keyRegex, (match, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `<span class="text-green-400">${match.substring(0, match.length - 1)}</span>:`
-    })
-    
-    // 2. String values
-    const stringValueRegex = /:\s*("(?:[^"\\]|\\.)*")/g
-    highlighted = highlighted.replace(stringValueRegex, (match, value, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `: <span class="text-yellow-300">${value}</span>`
-    })
-    
-    // 3. Boolean and null values
-    const booleanRegex = /:\s*(true|false|null)/g
-    highlighted = highlighted.replace(booleanRegex, (match, value, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `: <span class="text-blue-400">${value}</span>`
-    })
-    
-    // 4. Numbers
-    const numberRegex = /:\s*(\d+(?:\.\d+)?)/g
-    highlighted = highlighted.replace(numberRegex, (match, value, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `: <span class="text-orange-400">${value}</span>`
-    })
-    
-    // 5. Brackets and braces (but not if already highlighted)
-    const bracketRegex = /([{}[\],])/g
-    highlighted = highlighted.replace(bracketRegex, (match, offset, string) => {
-      const beforeMatch = string.substring(0, offset)
-      const openSpans = (beforeMatch.match(/<span[^>]*>/g) || []).length
-      const closeSpans = (beforeMatch.match(/<\/span>/g) || []).length
-      
-      if (openSpans > closeSpans) {
-        return match
-      }
-      return `<span class="text-white">${match}</span>`
-    })
-    
-    return highlighted
-  }
 
   const handleFileSelect = (file: any) => {
     try {
@@ -525,7 +466,8 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
           type: 'file',
           path: file.path,
           content: existingTab.content,
-          fileId: fileId
+          fileId: fileId,
+          fileType: file.type || getFileType(file.path)
         })
         setFileContent(existingTab.content)
       } else {
@@ -544,7 +486,8 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
           type: 'file',
           path: file.path,
           content: file.content,
-          fileId: fileId
+          fileId: fileId,
+          fileType: file.type || getFileType(file.path)
         })
         setFileContent(file.content)
       }
@@ -552,6 +495,22 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
       console.error('Error selecting file:', error)
       toast.error('Error opening file')
     }
+  }
+
+  const toggleFolder = (folderPath: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(folderPath)) {
+        newSet.delete(folderPath)
+      } else {
+        newSet.add(folderPath)
+      }
+      return newSet
+    })
+  }
+
+  const isFolderExpanded = (folderPath: string) => {
+    return expandedFolders.has(folderPath)
   }
 
   const handleTabClose = (tabId: string) => {
@@ -567,7 +526,8 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
           type: 'file',
           path: nextTab.path,
           content: nextTab.content,
-          fileId: nextTab.id
+          fileId: nextTab.id,
+          fileType: getFileType(nextTab.path)
         })
         setFileContent(nextTab.content)
       } else {
@@ -588,7 +548,8 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
           type: 'file',
           path: tab.path,
           content: tab.content,
-          fileId: tab.id
+          fileId: tab.id,
+          fileType: getFileType(tab.path)
         })
         setFileContent(tab.content)
       }
@@ -598,10 +559,6 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
     }
   }
 
-  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
-    const { scrollTop, scrollLeft } = e.currentTarget
-    setScrollPosition({ scrollTop, scrollLeft })
-  }
 
 
   const handleSave = async () => {
@@ -697,8 +654,8 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
     
     // Inject CSS into the HTML
     if (cssContent) {
-      // Remove existing CSS links and add inline styles
-      htmlContent = htmlContent.replace(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi, '')
+      // Keep external CSS links (fonts, CDNs) but remove local CSS links
+      htmlContent = htmlContent.replace(/<link[^>]*rel=["']stylesheet["'][^>]*href=["'][^"']*\.css["'][^>]*>/gi, '')
       htmlContent = htmlContent.replace('</head>', `<style>\n${cssContent}\n</style>\n</head>`)
     }
     
@@ -754,16 +711,15 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
   }
 
   const handlePreview = () => {
-    const combinedContent = getCombinedHTMLContent(currentPage)
-    if (combinedContent) {
-      const newWindow = window.open('', '_blank')
-      if (newWindow) {
-        newWindow.document.write(combinedContent)
-        newWindow.document.close()
-      }
-    } else {
-      toast.error('No HTML file found for preview')
-    }
+    // Open the project preview in a new tab with proper URL
+    const previewUrl = `/projects/${project?.id}/preview`
+    window.open(previewUrl, '_blank')
+  }
+
+  const handleFullscreenPreview = () => {
+    // Open the project preview in fullscreen mode
+    const fullscreenUrl = `/projects/${project?.id}/fullscreen`
+    window.open(fullscreenUrl, '_blank')
   }
 
   const getPreviewWidth = () => {
@@ -836,6 +792,17 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
           >
             <Eye className="h-4 w-4 mr-2" />
             Preview
+          </Button>
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleFullscreenPreview}
+            className="text-gray-300 hover:text-white hover:bg-gray-700 border border-green-600"
+            title="Open Fullscreen Preview"
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Fullscreen
           </Button>
           
           {selectedFile && selectedFile.name.endsWith('.html') && (
@@ -911,23 +878,11 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
           )}
           
           <div className="flex-1 p-2 overflow-y-auto">
-            {project.files.map((file) => (
-              <div
-                key={file.id}
-                onClick={() => handleFileSelect(file)}
-                className={`flex items-center space-x-2 p-2 rounded cursor-pointer transition-colors ${
-                  selectedFile?.fileId === file.id
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                }`}
-                title={sidebarCollapsed ? (file.path.split('/').pop() || file.path) : undefined}
-              >
-                {getFileIcon(file.path)}
-                {!sidebarCollapsed && (
-                  <span className="text-sm truncate">{file.path.split('/').pop() || file.path}</span>
-                )}
-              </div>
-            ))}
+            {project.files && project.files.length > 0 ? (
+              renderFolderStructure(sortFilesWithIndexFirst(organizeFilesIntoFolders(project.files)))
+            ) : (
+              <div className="text-gray-500 text-sm p-2">No files available</div>
+            )}
           </div>
         </div>
 
@@ -974,6 +929,17 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
                   >
                     <Eye className="h-4 w-4 mr-2" />
                     Preview
+                  </Button>
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleFullscreenPreview}
+                    className="text-gray-300 hover:text-white hover:bg-gray-700"
+                    title="Open Fullscreen Preview"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Fullscreen
                   </Button>
                   
                   <Button
@@ -1047,7 +1013,7 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
                   {/* Line Numbers and Editor */}
                   <div className="flex-1 flex overflow-hidden">
                     {/* Line Numbers */}
-                    <div 
+                    {/* <div 
                       className="bg-gray-800 border-r border-gray-700 px-3 py-4 text-gray-500 text-sm font-mono select-none overflow-hidden"
                       style={{
                         transform: `translateY(-${scrollPosition.scrollTop}px)`,
@@ -1059,43 +1025,235 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
                           {index + 1}
                         </div>
                       ))}
-                    </div>
+                    </div> */}
 
-                    {/* Code Editor */}
+                    {/* Code Editor */}                    
                     <div className="flex-1 relative overflow-hidden">
-                      <textarea
-                        value={fileContent}
-                        onChange={(e) => setFileContent(e.target.value)}
-                        onScroll={handleScroll}
-                        className="w-full h-full bg-transparent text-transparent font-mono text-sm resize-none outline-none p-4 leading-6 absolute inset-0 z-20"
-                        placeholder="Start typing your code..."
-                        spellCheck={false}
-                        style={{
-                          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-                          lineHeight: '1.5',
-                          tabSize: 2,
-                          caretColor: 'white',
-                          overflow: 'auto'
-                        }}
-                      />
                       
-                      {/* Syntax highlighting overlay */}
-                      <div 
-                        className="absolute inset-0 pointer-events-none p-4 font-mono text-sm leading-6 z-10"
-                        style={{
-                          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-                          lineHeight: '1.5',
-                          whiteSpace: 'pre-wrap',
-                          wordWrap: 'break-word',
-                          transform: `translate(-${scrollPosition.scrollLeft}px, -${scrollPosition.scrollTop}px)`,
-                          minHeight: `${fileContent.split('\n').length * 24}px`,
-                          width: 'max-content',
-                          minWidth: '100%'
-                        }}
-                        dangerouslySetInnerHTML={{
-                          __html: getSyntaxHighlightedCode(fileContent, selectedFile.name)
-                        }}
-                      />
+                      {selectedFile ? (
+                        <MonacoEditor
+                          key={selectedFile.fileId || selectedFile.path}
+                          height="100%"
+                          value={fileContent}
+                          language={getLanguageFromType(selectedFile.fileType || selectedFile.type, selectedFile.path)}
+                          theme="vs-dark"
+                          path={selectedFile.path}
+                          loading={<div className="flex items-center justify-center h-full text-muted-foreground">Loading editor...</div>}
+                          options={{
+                            automaticLayout: true,
+                            acceptSuggestionOnCommitCharacter: true,
+                            acceptSuggestionOnEnter: "on",
+                            accessibilitySupport: "auto",
+                            accessibilityPageSize: 10,
+                            ariaLabel: `Code editor for ${selectedFile.path}`,
+                            ariaRequired: false,
+                            screenReaderAnnounceInlineSuggestion: true,
+                            autoClosingBrackets: "languageDefined",
+                            autoClosingComments: "languageDefined",
+                            autoClosingDelete: "auto",
+                            autoClosingOvertype: "auto",
+                            autoClosingQuotes: "languageDefined",
+                            autoIndent: "full",
+                            autoSurround: "languageDefined",
+                            bracketPairColorization: {
+                              enabled: true,
+                              independentColorPoolPerBracketType: false,
+                            },
+                            bracketPairGuides: {
+                              bracketPairs: false,
+                              bracketPairsHorizontal: "active",
+                              highlightActiveBracketPair: true,
+                              indentation: true,
+                              highlightActiveIndentation: true,
+                            },
+                            stickyTabStops: false,
+                            codeLens: true,
+                            colorDecorators: true,
+                            colorDecoratorActivatedOn: "clickAndHover",
+                            colorDecoratorsLimit: 500,
+                            comments: {
+                              insertSpace: true,
+                              ignoreEmptyLines: true,
+                            },
+                            cursorBlinking: "blink",
+                            cursorSmoothCaretAnimation: "off",
+                            cursorStyle: "line",
+                            dragAndDrop: true,
+                            emptySelectionClipboard: true,
+                            dropIntoEditor: {
+                              enabled: true,
+                              showDropSelector: "afterDrop",
+                            },
+                            stickyScroll: {
+                              enabled: true,
+                              maxLineCount: 5,
+                              defaultModel: "outlineModel",
+                              scrollWithEditor: true,
+                            },
+                            experimentalWhitespaceRendering: "svg",
+                            fastScrollSensitivity: 5,
+                            find: {
+                              cursorMoveOnType: true,
+                              seedSearchStringFromSelection: "always",
+                              autoFindInSelection: "never",
+                              globalFindClipboard: false,
+                              addExtraSpaceOnTop: true,
+                              loop: true,
+                            },
+                            folding: true,
+                            foldingStrategy: "auto",
+                            foldingHighlight: true,
+                            fontFamily: "Consolas, 'Courier New', monospace",
+                            fontSize: 14,
+                            fontWeight: "normal",
+                            glyphMargin: true,
+                            gotoLocation: {
+                              multipleDefinitions: "peek",
+                              multipleTypeDefinitions: "peek",
+                              multipleDeclarations: "peek",
+                              multipleImplementations: "peek",
+                              multipleReferences: "peek",
+                              alternativeDefinitionCommand: "editor.action.goToReferences",
+                              alternativeTypeDefinitionCommand: "editor.action.goToReferences",
+                              alternativeDeclarationCommand: "editor.action.goToReferences",
+                            },
+                            hover: {
+                              enabled: true,
+                              delay: 300,
+                              sticky: true,
+                              hidingDelay: 300,
+                              above: true,
+                            },
+                            lightbulb: {
+                              enabled: "onCode",
+                            },
+                            lineDecorationsWidth: 10,
+                            lineNumbers: "on",
+                            lineNumbersMinChars: 5,
+                            links: true,
+                            matchBrackets: "always",
+                            minimap: {
+                              enabled: true,
+                              autohide: false,
+                              size: "proportional",
+                              side: "right",
+                              showSlider: "mouseover",
+                              scale: 1,
+                              renderCharacters: true,
+                              maxColumn: 120,
+                              showRegionSectionHeaders: true,
+                              showMarkSectionHeaders: true,
+                              sectionHeaderFontSize: 9,
+                              sectionHeaderLetterSpacing: 1,
+                            },
+                            mouseStyle: "text",
+                            multiCursorMergeOverlapping: true,
+                            multiCursorModifier: "alt",
+                            multiCursorPaste: "spread",
+                            multiCursorLimit: 10000,
+                            occurrencesHighlight: "singleFile",
+                            overviewRulerBorder: true,
+                            overviewRulerLanes: 2,
+                            parameterHints: {
+                              enabled: true,
+                              cycle: true,
+                            },
+                            peekWidgetDefaultFocus: "tree",
+                            quickSuggestions: {
+                              other: "on",
+                              comments: "off",
+                              strings: "off",
+                            },
+                            quickSuggestionsDelay: 10,
+                            readOnly: false,
+                            renderControlCharacters: true,
+                            renderFinalNewline: "on",
+                            renderLineHighlight: "line",
+                            renderValidationDecorations: "editable",
+                            renderWhitespace: "selection",
+                            revealHorizontalRightPadding: 15,
+                            roundedSelection: true,
+                            scrollbar: {
+                              vertical: "auto",
+                              horizontal: "auto",
+                              verticalScrollbarSize: 14,
+                              horizontalScrollbarSize: 12,
+                            },
+                            scrollBeyondLastLine: true,
+                            selectionClipboard: true,
+                            selectionHighlight: true,
+                            selectOnLineNumbers: true,
+                            showFoldingControls: "mouseover",
+                            showUnused: true,
+                            showDeprecated: true,
+                            inlayHints: {
+                              enabled: "on",
+                              fontSize: 0,
+                              fontFamily: "",
+                              padding: false,
+                            },
+                            snippetSuggestions: "inline",
+                            smoothScrolling: false,
+                            suggest: {
+                              insertMode: "insert",
+                              filterGraceful: true,
+                              showIcons: true,
+                              showInlineDetails: true,
+                              showMethods: true,
+                              showFunctions: true,
+                              showClasses: true,
+                              showVariables: true,
+                              showModules: true,
+                              showProperties: true,
+                              showEvents: true,
+                              showOperators: true,
+                              showValues: true,
+                              showEnums: true,
+                              showEnumMembers: true,
+                              showKeywords: true,
+                              showSnippets: true,
+                            },
+                            inlineSuggest: {
+                              enabled: true,
+                              showToolbar: "onHover",
+                              suppressSuggestions: false,
+                              fontFamily: "default",
+                            },
+                            wordWrap: "off",
+                            wordWrapColumn: 80,
+                          }}
+                          onChange={(value) => {
+                            if (value !== undefined) {
+                              setFileContent(value)
+                            }
+                          }}
+                          onMount={(editor, monaco) => {
+                            // Set accessibility attributes
+                            const editorElement = editor.getDomNode()
+                            if (editorElement && selectedFile) {
+                              editorElement.setAttribute('id', `monaco-editor-${selectedFile.fileId || selectedFile.path}`)
+                              editorElement.setAttribute('name', `monaco-editor-${selectedFile.path}`)
+                              editorElement.setAttribute('role', 'textbox')
+                              editorElement.setAttribute('aria-label', `Code editor for ${selectedFile.path}`)
+                              editorElement.setAttribute('aria-multiline', 'true')
+                            }
+                            
+                            // Ensure syntax highlighting is enabled
+                            const language = getLanguageFromType(selectedFile.fileType || selectedFile.type, selectedFile.path)
+                            console.log('Monaco Editor mounted with language:', language, 'for file:', selectedFile.path, 'fileType:', selectedFile.fileType)
+                            
+                            // Force re-highlighting
+                            editor.getAction('editor.action.formatDocument')?.run()
+                          }}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-muted-foreground">
+                          <div className="text-center">
+                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                            <p>Select a file to start editing...</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1183,6 +1341,7 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
                           title="Preview"
                           key={currentPage} // Force re-render when page changes
                           style={{ minHeight: '800px' }}
+                          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-top-navigation-by-user-activation"
                         />
                       </div>
                     </div>

@@ -226,7 +226,7 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
                   src={`/api/projects/${params.id}/preview`}
                   className="w-full h-[600px] border-0"
                   title="Project Preview"
-                  sandbox="allow-scripts allow-same-origin allow-forms"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-top-navigation-by-user-activation"
                   style={{ minHeight: '600px' }}
                 />
               </div>

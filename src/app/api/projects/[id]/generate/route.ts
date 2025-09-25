@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateWebsite, generateWebsiteModification, AIProvider } from '@/lib/ai'
+import { enhanceUserPrompt } from '@/lib/ai/prompt-enhancer'
 import { z } from 'zod'
 
 const generateSchema = z.object({
@@ -30,6 +31,13 @@ export async function POST(
     const body = await request.json()
     const { prompt, provider, isModification, currentFiles } = generateSchema.parse(body)
 
+    // Enhance the user prompt for better results
+    const enhancedPrompt = await enhanceUserPrompt(prompt, {
+      userIntent: isModification ? 'modify' : 'update',
+      projectType: 'website',
+      currentFiles: currentFiles || []
+    })
+
     // Verify project ownership
     const project = await prisma.project.findFirst({
       where: {
@@ -46,17 +54,17 @@ export async function POST(
     const generation = await prisma.projectGeneration.create({
       data: {
         projectId: params.id,
-        prompt,
+        prompt: enhancedPrompt, // Use enhanced prompt
         aiProvider: provider,
         status: 'PROCESSING',
       },
     })
 
     try {
-      // Generate website with AI (modification or new generation)
+      // Generate website with AI (modification or new generation) using enhanced prompt
       const aiResponse = isModification 
-        ? await generateWebsiteModification(prompt, provider as AIProvider, currentFiles || [])
-        : await generateWebsite(prompt, provider as AIProvider)
+        ? await generateWebsiteModification(enhancedPrompt, provider as AIProvider, currentFiles || [])
+        : await generateWebsite(enhancedPrompt, provider as AIProvider)
 
       // Update generation record
       await prisma.projectGeneration.update({

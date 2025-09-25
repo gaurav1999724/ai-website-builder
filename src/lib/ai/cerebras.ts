@@ -196,9 +196,9 @@ export async function generateWebsiteWithCerebras(prompt: string): Promise<AIRes
   
   try {
     await logger.info('Starting Cerebras AI generation', {
-      provider: 'cerebras',
+      provider: prompt,
       promptLength: prompt.length
-    })
+    })  
     // Fetch dynamic prompt from database
     const systemPrompt = await getSystemPrompt(AIProvider.CEREBRAS, PromptType.WEBSITE_GENERATION)
 

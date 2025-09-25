@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateWebsite, AIProvider } from '@/lib/ai'
+import { enhanceUserPrompt } from '@/lib/ai/prompt-enhancer'
 import { logger, extractRequestContext } from '@/lib/logger'
 import { z } from 'zod'
 
@@ -70,6 +71,25 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { prompt, provider, title } = generateSchema.parse(body)
 
+    // Enhance the user prompt for better results
+    await logger.info('Enhancing user prompt', {
+      originalPromptLength: prompt.length,
+      provider,
+      ...requestContext
+    })
+
+    const enhancedPrompt = await enhanceUserPrompt(prompt, {
+      userIntent: 'create',
+      projectType: 'website'
+    })
+
+    await logger.info('Prompt enhancement completed', {
+      originalPromptLength: prompt.length,
+      enhancedPromptLength: enhancedPrompt.length,
+      enhancementRatio: enhancedPrompt.length / prompt.length,
+      ...requestContext
+    })
+
     let project: any
     let generation: any
 
@@ -78,7 +98,7 @@ export async function POST(request: NextRequest) {
       project = await prisma.project.create({
         data: {
           title: title || `Project ${new Date().toLocaleDateString()}`,
-          prompt,
+          prompt: enhancedPrompt, // Use enhanced prompt
           userId: userId,
           status: 'GENERATING',
         },
@@ -95,7 +115,7 @@ export async function POST(request: NextRequest) {
       generation = await prisma.projectGeneration.create({
         data: {
           projectId: project.id,
-          prompt,
+          prompt: enhancedPrompt, // Use enhanced prompt
           aiProvider: provider,
           status: 'PROCESSING',
         },
@@ -109,14 +129,14 @@ export async function POST(request: NextRequest) {
       })
 
       try {
-        // Generate website with AI
+        // Generate website with AI using enhanced prompt
         const aiStartTime = Date.now()
-        const aiResponse = await generateWebsite(prompt, provider as AIProvider)
+        const aiResponse = await generateWebsite(enhancedPrompt, provider as AIProvider)
         const aiDuration = Date.now() - aiStartTime
 
         await logger.logAiGeneration(
           provider,
-          prompt,
+          enhancedPrompt,
           true,
           aiDuration,
           {

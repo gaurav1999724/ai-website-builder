@@ -26,6 +26,53 @@
     --radius: 0.5rem;
   }
 
+  /* Smoke Animation Keyframes */
+  @keyframes smokeFloat {
+    0% {
+      transform: translateY(100vh) translateX(0) rotate(0deg) scale(0.5);
+      opacity: 0;
+    }
+    10% {
+      opacity: 0.3;
+    }
+    50% {
+      transform: translateY(50vh) translateX(50px) rotate(180deg) scale(1);
+      opacity: 0.6;
+    }
+    90% {
+      opacity: 0.3;
+    }
+    100% {
+      transform: translateY(-100px) translateX(-50px) rotate(360deg) scale(0.5);
+      opacity: 0;
+    }
+  }
+
+  /* Gradient Animation Keyframes */
+  @keyframes gradientShift {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  /* Pulse Animation for Mouse Follower */
+  @keyframes mousePulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 0.7;
+    }
+    50% {
+      transform: scale(1.2);
+      opacity: 0.4;
+    }
+  }
+
   .dark {
     --background: 0 0% 0%;
     --foreground: 0 0% 100%;

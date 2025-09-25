@@ -94,6 +94,37 @@ const config: Config = {
           "0%": { transform: "rotate(0deg)" },
           "100%": { transform: "rotate(360deg)" },
         },
+        "smokeFloat": {
+          "0%": { 
+            transform: "translateY(100vh) translateX(0) rotate(0deg) scale(0.5)",
+            opacity: "0"
+          },
+          "10%": { opacity: "0.3" },
+          "50%": { 
+            transform: "translateY(50vh) translateX(50px) rotate(180deg) scale(1)",
+            opacity: "0.6"
+          },
+          "90%": { opacity: "0.3" },
+          "100%": { 
+            transform: "translateY(-100px) translateX(-50px) rotate(360deg) scale(0.5)",
+            opacity: "0"
+          },
+        },
+        "gradientShift": {
+          "0%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+          "100%": { backgroundPosition: "0% 50%" },
+        },
+        "mousePulse": {
+          "0%, 100%": { 
+            transform: "scale(1)",
+            opacity: "0.7"
+          },
+          "50%": { 
+            transform: "scale(1.2)",
+            opacity: "0.4"
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -105,6 +136,9 @@ const config: Config = {
         "slide-in-from-left": "slide-in-from-left 0.3s ease-out",
         "slide-in-from-right": "slide-in-from-right 0.3s ease-out",
         "spin-slow": "spin-slow 3s linear infinite",
+        "smokeFloat": "smokeFloat 15s infinite linear",
+        "gradientShift": "gradientShift 3s ease-in-out infinite",
+        "mousePulse": "mousePulse 2s ease-in-out infinite",
       },
     },
   },
