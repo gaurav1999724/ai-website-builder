@@ -73,6 +73,58 @@
     }
   }
 
+  /* Fluid Effect Animations */
+  @keyframes fluidGlow {
+    0%, 100% {
+      opacity: 0.3;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.6;
+      transform: scale(1.1);
+    }
+  }
+
+  @keyframes fluidFlow {
+    0% {
+      transform: translateX(-100%) rotate(0deg);
+    }
+    100% {
+      transform: translateX(100vw) rotate(360deg);
+    }
+  }
+
+  /* WebGL Fallback Styles */
+  .webgl-fallback {
+    display: block;
+  }
+
+  /* Hide fallback when WebGL is supported */
+  .webgl-supported .webgl-fallback {
+    display: none;
+  }
+
+  /* Show fallback when WebGL is not supported */
+  .no-webgl .webgl-fallback {
+    display: block;
+  }
+
+  /* Fluid effect canvas styling */
+  canvas[class*="fluid-effect"] {
+    filter: blur(0.5px);
+    will-change: transform;
+  }
+
+  /* Enhanced fluid glow effect */
+  .fluid-glow {
+    animation: fluidGlow 4s ease-in-out infinite;
+  }
+
+  /* Smooth transitions for WebGL detection */
+  .webgl-transition {
+    transition: opacity 0.5s ease-in-out;
+  }
+
   .dark {
     --background: 0 0% 0%;
     --foreground: 0 0% 100%;

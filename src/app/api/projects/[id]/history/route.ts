@@ -43,11 +43,14 @@ export async function GET(
       
       if (gen.status === 'COMPLETED' && gen.response) {
         try {
+          // Try to parse as JSON first (for legacy responses)
           const responseData = JSON.parse(gen.response)
           aiResponse = responseData.content
           status = 'success'
         } catch (error) {
-          console.error('Error parsing AI response:', error)
+          // If parsing fails, treat as plain string (new format)
+          aiResponse = gen.response
+          status = 'success'
         }
       } else if (gen.status === 'FAILED') {
         status = 'failed'

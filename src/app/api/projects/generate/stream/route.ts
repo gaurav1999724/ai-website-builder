@@ -3,13 +3,16 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { logger, extractRequestContext } from '@/lib/logger'
+import { formatDateOnly } from '@/lib/utils'
 import { z } from 'zod'
-import { AIProvider } from '@prisma/client'
+import { AIProvider as PrismaAIProvider } from '@prisma/client'
+import { AIProvider } from '@/lib/ai'
 
 const generateSchema = z.object({
   prompt: z.string().min(1, 'Prompt is required'),
   provider: z.enum(['cerebras', 'openai', 'anthropic', 'gemini']).optional().default('cerebras'),
   title: z.string().optional(),
+  images: z.array(z.string()).optional().default([]), // Base64 encoded images
 })
 
 // Helper function to determine file type from path
@@ -47,7 +50,7 @@ function getFileTypeFromPath(path: string): string {
 }
 
 // Streaming AI generation function
-async function* streamAIResponse(prompt: string, provider: AIProvider, projectId?: string) {
+async function* streamAIResponse(prompt: string, provider: AIProvider, projectId?: string, images?: string[]) {
   // Simulate streaming by breaking the generation into chunks
   const chunks = [
     { type: 'status', data: { status: 'Reading prompt...', progress: 10 } },
@@ -68,7 +71,7 @@ async function* streamAIResponse(prompt: string, provider: AIProvider, projectId
   // Now generate the actual content
   try {
     const { generateWebsite } = await import('@/lib/ai')
-    const aiResponse = await generateWebsite(prompt, provider.toLowerCase() as any)
+    const aiResponse = await generateWebsite(prompt, provider as AIProvider, images)
     
     // Stream the files one by one
     for (let i = 0; i < aiResponse.files.length; i++) {
@@ -95,7 +98,8 @@ async function* streamAIResponse(prompt: string, provider: AIProvider, projectId
         progress: 100,
         totalFiles: aiResponse.files.length,
         metadata: aiResponse.metadata,
-        projectId: projectId
+        projectId: projectId,
+        description: aiResponse.content // Include the AI response description
       }
     }
     yield `data: ${JSON.stringify(completionChunk)}\n\n`
@@ -133,7 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { prompt, provider, title } = generateSchema.parse(body)
+    const { prompt, provider, title, images } = generateSchema.parse(body)
 
     // Enhance the user prompt for better results
     const { enhanceUserPrompt } = await import('@/lib/ai/prompt-enhancer')
@@ -149,8 +153,8 @@ export async function POST(request: NextRequest) {
       // Create project record
       project = await prisma.project.create({
         data: {
-          title: title || `Project ${new Date().toLocaleDateString()}`,
-          prompt: enhancedPrompt,
+          title: title || `Project ${formatDateOnly(new Date())}`,
+          prompt: prompt, // Use original user prompt, not enhanced
           userId: userId,
           status: 'GENERATING',
         },
@@ -160,8 +164,8 @@ export async function POST(request: NextRequest) {
       generation = await prisma.projectGeneration.create({
         data: {
           projectId: project.id,
-          prompt: enhancedPrompt,
-          aiProvider: provider,
+          prompt: prompt, // Use original user prompt, not enhanced
+          aiProvider: provider.toUpperCase() as PrismaAIProvider,
           status: 'PROCESSING',
         },
       })
@@ -192,7 +196,8 @@ export async function POST(request: NextRequest) {
 
             // Stream the AI response and collect files
             const generatedFiles: any[] = []
-            for await (const chunk of streamAIResponse(enhancedPrompt, provider as AIProvider, project.id)) {
+            let aiResponseDescription = ''
+            for await (const chunk of streamAIResponse(enhancedPrompt, provider as AIProvider, project.id, images)) {
               controller.enqueue(encoder.encode(chunk))
               
               // Collect file data for database saving
@@ -201,6 +206,8 @@ export async function POST(request: NextRequest) {
                   const chunkData = JSON.parse(chunk.slice(6))
                   if (chunkData.type === 'file') {
                     generatedFiles.push(chunkData.data)
+                  } else if (chunkData.type === 'complete' && chunkData.data.description) {
+                    aiResponseDescription = chunkData.data.description
                   }
                 } catch (e) {
                   // Ignore parsing errors for non-JSON chunks
@@ -216,20 +223,42 @@ export async function POST(request: NextRequest) {
                   where: { projectId: project.id }
                 })
 
+                // Deduplicate files by path (keep the file with the most content)
+                const uniqueFiles = new Map()
+                generatedFiles.forEach(file => {
+                  if (file && file.path && file.content !== undefined) {
+                    const existingFile = uniqueFiles.get(file.path)
+                    if (!existingFile || file.content.length > existingFile.content.length) {
+                      uniqueFiles.set(file.path, file)
+                    }
+                  }
+                })
+                const deduplicatedFiles = Array.from(uniqueFiles.values())
+                
+                if (deduplicatedFiles.length === 0) {
+                  await logger.warn('No valid files to save after deduplication', {
+                    projectId: project.id,
+                    originalFileCount: generatedFiles.length,
+                    ...requestContext
+                  })
+                  return
+                }
+
                 // Create new files
                 await prisma.projectFile.createMany({
-                  data: generatedFiles.map(file => ({
+                  data: deduplicatedFiles.map(file => ({
                     projectId: project.id,
                     path: file.path,
                     content: file.content,
-                    type: file.type,
+                    type: file.type === 'IMAGE' ? 'OTHER' : file.type, // Map IMAGE to OTHER since it's not in FileType enum
                     size: file.content.length
                   }))
                 })
 
                 await logger.info('Files saved to database', {
                   projectId: project.id,
-                  fileCount: generatedFiles.length,
+                  fileCount: deduplicatedFiles.length,
+                  originalFileCount: generatedFiles.length,
                   ...requestContext
                 })
               } catch (error) {
@@ -249,7 +278,10 @@ export async function POST(request: NextRequest) {
 
             await prisma.projectGeneration.update({
               where: { id: generation.id },
-              data: { status: 'COMPLETED' }
+              data: { 
+                status: 'COMPLETED',
+                response: aiResponseDescription // Store the AI response description
+              }
             })
 
             await logger.info('Streaming generation completed', {

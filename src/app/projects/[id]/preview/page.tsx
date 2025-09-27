@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, ExternalLink, Download, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import JSZip from 'jszip'
+import { getCombinedHTMLContent } from '@/lib/html-content-processor'
 
 interface ProjectFile {
   id: string
@@ -32,6 +33,8 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [previewContent, setPreviewContent] = useState('')
+  const [currentPage, setCurrentPage] = useState<string>('')
+  const [availablePages, setAvailablePages] = useState<string[]>([])
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -49,65 +52,46 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
         const data = await response.json()
         setProject(data.project)
         
-        // Generate complete preview content with all assets embedded
-        const htmlFile = data.project.files.find((f: ProjectFile) => 
-          f.path.endsWith('.html') || f.path.endsWith('.htm')
-        )
-        const cssFile = data.project.files.find((f: ProjectFile) => 
-          f.path.endsWith('.css')
-        )
-        const jsFile = data.project.files.find((f: ProjectFile) => 
-          f.path.endsWith('.js')
-        )
+        // Extract available HTML pages for navigation
+        const htmlPages = data.project.files
+          .filter((f: ProjectFile) => f.type === 'HTML')
+          .map((f: ProjectFile) => f.path)
+        setAvailablePages(htmlPages)
+        console.log('📄 Available pages for preview:', htmlPages)
         
-        if (htmlFile) {
-          let completeContent = htmlFile.content
-          
-          // Ensure we have a proper HTML structure
-          if (!completeContent.includes('<!DOCTYPE html>')) {
-            completeContent = `<!DOCTYPE html>\n<html lang="en">\n${completeContent}\n</html>`
-          }
-          
-          // Embed CSS inline
-          if (cssFile) {
-            const cssEmbed = `<style>\n${cssFile.content}\n</style>`
-            // Insert CSS before closing </head> tag, or at the beginning if no head tag
-            if (completeContent.includes('</head>')) {
-              completeContent = completeContent.replace('</head>', `${cssEmbed}\n</head>`)
-            } else if (completeContent.includes('<head>')) {
-              completeContent = completeContent.replace('<head>', `<head>\n${cssEmbed}`)
-            } else {
-              // If no head tag, add it at the beginning
-              completeContent = completeContent.replace('<html', `<html>\n<head>\n${cssEmbed}\n</head>\n<body>`)
-              if (!completeContent.includes('</body>')) {
-                completeContent = completeContent.replace('</html>', '</body>\n</html>')
-              }
-            }
-          }
-          
-          // Embed JavaScript inline
-          if (jsFile) {
-            const jsEmbed = `<script>\n${jsFile.content}\n</script>`
-            // Insert JS before closing </body> tag, or at the end if no body tag
-            if (completeContent.includes('</body>')) {
-              completeContent = completeContent.replace('</body>', `${jsEmbed}\n</body>`)
-            } else if (completeContent.includes('<body>')) {
-              completeContent = completeContent.replace('<body>', `<body>\n${jsEmbed}`)
-            } else {
-              // If no body tag, add it at the end
-              completeContent = completeContent.replace('</html>', `\n${jsEmbed}\n</html>`)
-            }
-          }
-          
-          console.log('Generated complete content:', completeContent)
-          setPreviewContent(completeContent)
-        }
+        // Use the same content processing logic as fullscreen
+        const completeContent = getCombinedHTMLContent(data.project, '')
+        setPreviewContent(completeContent)
+        setCurrentPage('')
       }
     } catch (error) {
       console.error('Failed to load project:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadPageContent = (targetFile: string) => {
+    if (!project) {
+      console.error('❌ No project available for page loading')
+      return
+    }
+    
+    console.log('🔄 Loading page content for preview:', targetFile || 'main page')
+    console.log('📊 Project files:', project.files.map(f => ({ path: f.path, type: f.type })))
+    
+    const completeContent = getCombinedHTMLContent(project, targetFile)
+    console.log('📄 Generated content length:', completeContent.length)
+    console.log('📄 Content preview:', completeContent.substring(0, 200) + '...')
+    
+    if (!completeContent || completeContent.trim() === '') {
+      console.error('❌ No content generated for target file:', targetFile)
+      return
+    }
+    
+    setPreviewContent(completeContent)
+    setCurrentPage(targetFile)
+    console.log('✅ Page content loaded successfully for:', targetFile)
   }
 
   const copyUrl = () => {
@@ -220,22 +204,70 @@ export default function PreviewPage({ params }: { params: { id: string } }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {previewContent ? (
+            {/* Navigation Bar */}
+            {availablePages.length > 1 && (
+              <div className="mb-4 p-3 bg-gray-800 rounded-lg">
+                <div className="flex items-center space-x-2 flex-wrap">
+                  <span className="text-sm font-medium text-gray-300">Pages:</span>
+                  {availablePages.map((page, index) => {
+                    const pageName = page.split('/').pop() || page
+                    const isActive = currentPage === page || (!currentPage && index === 0)
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => loadPageContent(page)}
+                        className={`px-3 py-1 rounded text-sm transition-colors ${
+                          isActive 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                        }`}
+                      >
+                        {pageName}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {previewContent && previewContent.trim() !== '' ? (
               <div className="bg-white rounded-lg overflow-hidden">
                 <iframe
-                  src={`/api/projects/${params.id}/preview`}
+                  srcDoc={previewContent}
                   className="w-full h-[600px] border-0"
                   title="Project Preview"
+                  key={currentPage} // Force re-render when page changes
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-top-navigation-by-user-activation"
                   style={{ minHeight: '600px' }}
+                  onError={(e) => {
+                    console.error('Iframe error:', e)
+                  }}
+                  onLoad={() => {
+                    console.log('Preview iframe loaded successfully for page:', currentPage || 'main')
+                  }}
                 />
               </div>
             ) : (
               <div className="text-center py-12">
-                <p className="text-gray-400 mb-4">No HTML file found for preview</p>
-                <p className="text-gray-500 text-sm">
-                  This project doesn't contain an HTML file that can be previewed.
+                <p className="text-gray-400 mb-4">
+                  {currentPage ? `No content found for ${currentPage}` : 'No HTML file found for preview'}
                 </p>
+                <p className="text-gray-500 text-sm">
+                  {currentPage 
+                    ? `The file "${currentPage}" could not be loaded. Please check the console for details.`
+                    : 'This project doesn\'t contain an HTML file that can be previewed.'
+                  }
+                </p>
+                {currentPage && (
+                  <div className="mt-4">
+                    <button
+                      onClick={() => loadPageContent('')}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                    >
+                      Back to Main Page
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

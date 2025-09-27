@@ -48,35 +48,26 @@ Return your response as a JSON object with this exact structure:
 {
   "files": [
     {
-      "path": "index.html",
-      "content": "HTML content here",
-      "type": "html"
-    },
-    {
-      "path": "styles.css", 
-      "content": "CSS content here",
-      "type": "css"
-    },
-    {
-      "path": "script.js",
-      "content": "JavaScript content here", 
-      "type": "javascript"
+      "path": "{file-path-and-name}",
+      "content": "{File content here}",
+      "type": "file-type (html, css, javascript, json, etc.)"
     }
   ],
-  "description": "Brief description of the website"
+  "description": "Brief description of the project/website"
 }
+
 
 Requirements:
 - Create a complete, functional website
-- Use modern HTML5, CSS3, and JavaScript
+- Use modern and advanced HTML5, CSS3, and JavaScript
 - Make it responsive and mobile-friendly
 - Include proper semantic HTML
-- Use modern CSS features like Flexbox/Grid
+- Use the maximum number of files and components to create a complete project
+- Use modern and advanced CSS features like Flexbox/Grid
 - Add interactive elements with JavaScript
-- Ensure all code is clean and well-commented
-- Create at least 3-5 files for a complete project
-- Include a package.json if using any dependencies
-- Return ONLY valid JSON, no markdown formatting
+- Ensure all code is clean and well-commented and follows best practices
+- Create at least 5-15 files for a complete project
+- Return ONLY valid JSON, no markdown formatting and no additional text
 
 Focus on creating a professional, modern website that matches the user's requirements.`
 

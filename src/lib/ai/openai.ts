@@ -44,6 +44,7 @@ export interface AIResponse {
     path: string
     content: string
     type: string
+    size: number
   }>
   metadata: {
     model: string
@@ -52,7 +53,7 @@ export interface AIResponse {
   }
 }
 
-export async function generateWebsiteWithOpenAI(prompt: string): Promise<AIResponse> {
+export async function generateWebsiteWithOpenAI(prompt: string, images?: string[]): Promise<AIResponse> {
   try {
     const systemPrompt = `You are an expert web developer. Generate a complete website based on the user's prompt. 
 
@@ -137,7 +138,8 @@ Focus on creating a professional, modern website that matches the user's require
       ? parsedResponse.files.map((file: any) => ({
           path: file.path || 'unknown.txt',
           content: file.content || '',
-          type: file.type || getFileTypeFromPath(file.path || 'unknown.txt')
+          type: file.type || getFileTypeFromPath(file.path || 'unknown.txt'),
+          size: file.size || (file.content ? file.content.length : 0)
         }))
       : []
 

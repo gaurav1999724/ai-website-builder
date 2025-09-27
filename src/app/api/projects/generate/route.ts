@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { generateWebsite, AIProvider } from '@/lib/ai'
 import { enhanceUserPrompt } from '@/lib/ai/prompt-enhancer'
 import { logger, extractRequestContext } from '@/lib/logger'
+import { formatDateOnly } from '@/lib/utils'
 import { z } from 'zod'
 
 // Helper function to determine file type from path
@@ -97,8 +98,8 @@ export async function POST(request: NextRequest) {
       // Create project record
       project = await prisma.project.create({
         data: {
-          title: title || `Project ${new Date().toLocaleDateString()}`,
-          prompt: enhancedPrompt, // Use enhanced prompt
+          title: title || `Project ${formatDateOnly(new Date())}`,
+          prompt: prompt, // Use original user prompt, not enhanced
           userId: userId,
           status: 'GENERATING',
         },
@@ -115,8 +116,8 @@ export async function POST(request: NextRequest) {
       generation = await prisma.projectGeneration.create({
         data: {
           projectId: project.id,
-          prompt: enhancedPrompt, // Use enhanced prompt
-          aiProvider: provider,
+          prompt: prompt, // Use original user prompt, not enhanced
+          aiProvider: provider.toUpperCase() as any, // Ensure uppercase for Prisma enum
           status: 'PROCESSING',
         },
       })
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
         await prisma.projectGeneration.update({
           where: { id: generation.id },
           data: {
-            response: JSON.stringify(aiResponse),
+            response: aiResponse.content, // Store just the description as plain string
             status: 'COMPLETED',
           },
         })

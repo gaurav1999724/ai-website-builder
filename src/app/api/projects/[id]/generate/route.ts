@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateWebsite, generateWebsiteModification, AIProvider } from '@/lib/ai'
 import { enhanceUserPrompt } from '@/lib/ai/prompt-enhancer'
+import { sortFilesByPriority } from '@/lib/utils'
 import { z } from 'zod'
 
 const generateSchema = z.object({
@@ -54,8 +55,8 @@ export async function POST(
     const generation = await prisma.projectGeneration.create({
       data: {
         projectId: params.id,
-        prompt: enhancedPrompt, // Use enhanced prompt
-        aiProvider: provider,
+        prompt: prompt, // Use original user prompt, not enhanced
+        aiProvider: provider.toUpperCase() as any, // Ensure uppercase for Prisma enum
         status: 'PROCESSING',
       },
     })
@@ -75,8 +76,19 @@ export async function POST(
         },
       })
 
-      // Update existing files or create new ones
-      for (const file of aiResponse.files) {
+      // Update existing files or create new ones with deduplication
+      const uniqueFiles = new Map()
+      aiResponse.files.forEach(file => {
+        if (file && file.path && file.content !== undefined) {
+          const existingFile = uniqueFiles.get(file.path)
+          if (!existingFile || file.content.length > existingFile.content.length) {
+            uniqueFiles.set(file.path, file)
+          }
+        }
+      })
+      const deduplicatedFiles = Array.from(uniqueFiles.values())
+
+      for (const file of deduplicatedFiles) {
         await prisma.projectFile.upsert({
           where: {
             projectId_path: {
@@ -86,7 +98,7 @@ export async function POST(
           },
           update: {
             content: file.content,
-            type: file.type.toUpperCase() as any,
+            type: file.type === 'IMAGE' ? 'OTHER' : file.type.toUpperCase() as any,
             size: file.content.length,
             updatedAt: new Date(),
           },
@@ -94,7 +106,7 @@ export async function POST(
             projectId: params.id,
             path: file.path,
             content: file.content,
-            type: file.type.toUpperCase() as any,
+            type: file.type === 'IMAGE' ? 'OTHER' : file.type.toUpperCase() as any,
             size: file.content.length,
           },
         })
@@ -121,7 +133,7 @@ export async function POST(
       return NextResponse.json({
         success: true,
         content: aiResponse.content,
-        files: aiResponse.files,
+        files: sortFilesByPriority(aiResponse.files),
         metadata: aiResponse.metadata,
       })
 

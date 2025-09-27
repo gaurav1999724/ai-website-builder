@@ -19,6 +19,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { formatDateOnly } from '@/lib/utils'
 
 interface StreamingGeneratorProps {
   onComplete: (projectId: string) => void
@@ -67,7 +68,7 @@ export default function StreamingGenerator({ onComplete }: StreamingGeneratorPro
         body: JSON.stringify({
           prompt: prompt.trim(),
           provider: selectedProvider,
-          title: `Website - ${new Date().toLocaleDateString()}`,
+          title: `Website - ${formatDateOnly(new Date())}`,
         }),
         signal: abortControllerRef.current.signal,
       })
@@ -142,6 +143,14 @@ export default function StreamingGenerator({ onComplete }: StreamingGeneratorPro
         setCurrentStatus(chunk.data.status)
         setProgress(100)
         toast.success('Website generated successfully!')
+        
+        // Store the AI response description for later use
+        if (chunk.data.description) {
+          console.log('AI Response Description:', chunk.data.description)
+          // You can store this in a state variable or pass it to the parent component
+          // For now, we'll just log it - the actual storage will be handled by the API
+        }
+        
         // Use the projectId from state or from the complete chunk
         const finalProjectId = projectId || chunk.data.projectId
         console.log('Final project ID for redirect:', finalProjectId)

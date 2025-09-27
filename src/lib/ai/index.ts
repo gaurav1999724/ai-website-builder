@@ -11,6 +11,7 @@ export interface AIResponse {
     path: string
     content: string
     type: string
+    size: number
   }>
   metadata: {
     model: string
@@ -29,7 +30,8 @@ export type AIProvider = 'cerebras' | 'openai' | 'anthropic' | 'gemini'
 
 export async function generateWebsite(
   prompt: string,
-  provider: AIProvider = 'cerebras'
+  provider: AIProvider = 'cerebras',
+  images?: string[]
 ): Promise<AIResponse> {
   const startTime = Date.now()
   
@@ -43,26 +45,26 @@ export async function generateWebsite(
     
     switch (provider) {
       case 'cerebras':
-        result = await generateWebsiteWithCerebras(prompt)
+        result = await generateWebsiteWithCerebras(prompt, images)
         break
       case 'openai':
-        result = await generateWebsiteWithOpenAI(prompt)
+        result = await generateWebsiteWithOpenAI(prompt, images)
         break
       case 'anthropic':
-        result = await generateWebsiteWithAnthropic(prompt)
+        result = await generateWebsiteWithAnthropic(prompt, images)
         break
       case 'gemini':
-        result = await generateWebsiteWithGemini(prompt)
+        result = await generateWebsiteWithGemini(prompt, images)
         break
       default:
         throw new Error(`Unsupported AI provider: ${provider}`)
     }
 
     const duration = Date.now() - startTime
-    await logger.info(`AI generation completed successfully with ${provider}`, {
+    await logger.info(`AI generation completed successfully with >>>>>>>>>>>  ${provider}`, {
       provider,
       duration,
-      fileCount: result.files.length,
+      htmlContent: result,
       contentLength: result.content.length,
       metadata: result.metadata
     })

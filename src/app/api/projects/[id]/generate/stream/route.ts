@@ -176,8 +176,8 @@ export async function POST(
       generation = await prisma.projectGeneration.create({
         data: {
           projectId: project.id,
-          prompt: enhancedPrompt,
-          aiProvider: provider,
+          prompt: prompt, // Use original user prompt, not enhanced
+          aiProvider: provider.toUpperCase() as any, // Ensure uppercase for Prisma enum
           status: 'PROCESSING',
         },
       })
@@ -234,20 +234,42 @@ export async function POST(
                   where: { projectId: project.id }
                 })
 
+                // Deduplicate files by path (keep the file with the most content)
+                const uniqueFiles = new Map()
+                modifiedFiles.forEach(file => {
+                  if (file && file.path && file.content !== undefined) {
+                    const existingFile = uniqueFiles.get(file.path)
+                    if (!existingFile || file.content.length > existingFile.content.length) {
+                      uniqueFiles.set(file.path, file)
+                    }
+                  }
+                })
+                const deduplicatedFiles = Array.from(uniqueFiles.values())
+                
+                if (deduplicatedFiles.length === 0) {
+                  await logger.warn('No valid files to save after deduplication', {
+                    projectId: project.id,
+                    originalFileCount: modifiedFiles.length,
+                    ...requestContext
+                  })
+                  return
+                }
+
                 // Create new files
                 await prisma.projectFile.createMany({
-                  data: modifiedFiles.map(file => ({
+                  data: deduplicatedFiles.map(file => ({
                     projectId: project.id,
                     path: file.path,
                     content: file.content,
-                    type: file.type,
+                    type: file.type === 'IMAGE' ? 'OTHER' : file.type, // Map IMAGE to OTHER since it's not in FileType enum
                     size: file.content.length
                   }))
                 })
 
                 await logger.info('Modified files saved to database', {
                   projectId: project.id,
-                  fileCount: modifiedFiles.length,
+                  fileCount: deduplicatedFiles.length,
+                  originalFileCount: modifiedFiles.length,
                   ...requestContext
                 })
               } catch (error) {

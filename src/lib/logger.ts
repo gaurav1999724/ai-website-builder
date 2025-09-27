@@ -41,7 +41,15 @@ class Logger {
 
   private getLogFileName(level: LogLevel): string {
     const date = new Date().toISOString().split('T')[0] // YYYY-MM-DD
-    return path.join(this.logDir, `${level.toLowerCase()}-${date}.log`)
+    const levelFolder = level.charAt(0).toUpperCase() + level.slice(1).toLowerCase()
+    const levelDir = path.join(this.logDir, levelFolder)
+    
+    // Ensure the level-specific directory exists
+    if (!fs.existsSync(levelDir)) {
+      fs.mkdirSync(levelDir, { recursive: true })
+    }
+    
+    return path.join(levelDir, `logs-${date}.log`)
   }
 
   private formatLogEntry(entry: LogEntry): string {
@@ -87,13 +95,14 @@ class Logger {
 
   private async rotateLogFile(fileName: string): Promise<void> {
     try {
-      const baseName = path.basename(fileName, '.log')
-      const dir = path.dirname(fileName)
+      const dir = path.dirname(fileName) // This is now the level-specific folder
+      const baseFileName = path.basename(fileName, '.log') // e.g., 'logs-2025-09-26'
+      const extension = '.log'
 
       // Rotate existing files
       for (let i = this.maxFiles - 1; i > 0; i--) {
-        const oldFile = path.join(dir, `${baseName}.${i}.log`)
-        const newFile = path.join(dir, `${baseName}.${i + 1}.log`)
+        const oldFile = path.join(dir, `${baseFileName}.${i}${extension}`)
+        const newFile = path.join(dir, `${baseFileName}.${i + 1}${extension}`)
         
         if (fs.existsSync(oldFile)) {
           if (i === this.maxFiles - 1) {
@@ -105,7 +114,7 @@ class Logger {
       }
 
       // Move current file to .1
-      const rotatedFile = path.join(dir, `${baseName}.1.log`)
+      const rotatedFile = path.join(dir, `${baseFileName}.1${extension}`)
       fs.renameSync(fileName, rotatedFile)
     } catch (error) {
       console.error('Failed to rotate log file:', error)

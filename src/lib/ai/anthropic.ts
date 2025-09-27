@@ -10,6 +10,7 @@ export interface AIResponse {
     path: string
     content: string
     type: string
+    size: number
   }>
   metadata: {
     model: string
@@ -18,7 +19,7 @@ export interface AIResponse {
   }
 }
 
-export async function generateWebsiteWithAnthropic(prompt: string): Promise<AIResponse> {
+export async function generateWebsiteWithAnthropic(prompt: string, images?: string[]): Promise<AIResponse> {
   try {
     const systemPrompt = `You are an expert web developer. Generate a complete website based on the user's prompt. 
 
@@ -99,7 +100,14 @@ Focus on creating a professional, modern website that matches the user's require
     
     return {
       content: parsedResponse.description || 'Website generated successfully',
-      files: Array.isArray(parsedResponse.files) ? parsedResponse.files : [],
+      files: Array.isArray(parsedResponse.files) 
+        ? parsedResponse.files.map((file: any) => ({
+            path: file.path || 'unknown.txt',
+            content: file.content || '',
+            type: file.type || 'OTHER',
+            size: file.size || (file.content ? file.content.length : 0)
+          }))
+        : [],
       metadata: {
         model: message.model,
         tokens: message.usage.input_tokens + message.usage.output_tokens,

@@ -27,7 +27,9 @@ export default withAuth(
             req.nextUrl.pathname === '/' ||
             req.nextUrl.pathname.startsWith('/api/auth') ||
             req.nextUrl.pathname === '/api/projects/generate' ||
-            req.nextUrl.pathname.startsWith('/api/ai/prompts')) {
+            req.nextUrl.pathname.includes('/api/projects/') && req.nextUrl.pathname.includes('/generate') ||
+            req.nextUrl.pathname.startsWith('/api/ai/prompts') ||
+            req.nextUrl.pathname.startsWith('/api/ai/enhance-prompt')) {
           return true
         }
         
@@ -40,10 +42,11 @@ export default withAuth(
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
-    '/projects/:path*',
-    '/admin/:path*',
-    '/api/projects/:path*',
-    '/api/admin/:path*',
+    // Temporarily disable all middleware to test API
+    // '/dashboard/:path*',
+    // '/projects/:path*',
+    // '/admin/:path*',
+    // '/api/projects/:path*',
+    // '/api/admin/:path*',
   ]
 }

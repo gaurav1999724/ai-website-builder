@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { formatDateOnly } from '@/lib/utils'
 import JSZip from 'jszip'
 
 export async function GET(
@@ -53,7 +54,7 @@ ${project.files.map(file => `- ${file.path}`).join('\n')}
 2. Open index.html in your browser
 3. Customize as needed
 
-Generated on ${new Date().toLocaleDateString()}
+Generated on ${formatDateOnly(new Date())}
 `
 
     zip.file('README.md', readmeContent)

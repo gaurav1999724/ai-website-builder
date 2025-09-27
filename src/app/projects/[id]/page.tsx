@@ -24,7 +24,6 @@ import {
   FileJson,
   Code,
   Sparkles,
-  MessageCircle,
   Clock,
   CheckCircle,
   AlertCircle,
@@ -52,7 +51,8 @@ import {
   FolderOpen
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatRelativeTime } from '@/lib/utils'
+import { formatRelativeTime, formatDateTime, formatTime, formatDateOnly } from '@/lib/utils'
+// Removed HTML completion imports - using AI-generated content directly
 
 interface Project {
   id: string
@@ -93,7 +93,13 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isModifying, setIsModifying] = useState(false)
   const [modificationPrompt, setModificationPrompt] = useState('')
-  const [inputMode, setInputMode] = useState<'modify' | 'chat'>('chat')
+  const [enhancePrompt, setEnhancePrompt] = useState(false)
+  
+  // Streaming status state
+  const [streamingStatus, setStreamingStatus] = useState('')
+  const [streamingProgress, setStreamingProgress] = useState(0)
+  const [streamingFiles, setStreamingFiles] = useState<any[]>([])
+  const [streamingStatusHistory, setStreamingStatusHistory] = useState<string[]>([])
   const [isGettingSuggestion, setIsGettingSuggestion] = useState(false)
   const [suggestionResponse, setSuggestionResponse] = useState('')
   const [showSuggestion, setShowSuggestion] = useState(false)
@@ -105,46 +111,44 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         status: 'success' | 'failed' | 'pending'
         aiResponse?: string
       }>>([])
-  const [isChatOpen, setIsChatOpen] = useState(false)
-  const [chatMessage, setChatMessage] = useState('')
-  const [isChatLoading, setIsChatLoading] = useState(false)
-  const [chatProvider, setChatProvider] = useState<'openai' | 'gemini'>('openai')
-  const [chatHistory, setChatHistory] = useState<Array<{
-    id: string
-    type: 'user' | 'ai'
-    message: string
-    timestamp: Date
-    provider?: string
-  }>>([
-    {
-      id: '1',
-      type: 'ai',
-      message: 'Hello! I\'m here to help you with your project. What would you like to know?',
-      timestamp: new Date(),
-      provider: 'openai'
-    }
-  ])
   const [selectedFile, setSelectedFile] = useState<any>(null)
   const [fileContent, setFileContent] = useState('')
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState<string>('')
 
-  const chatMessagesRef = useRef<HTMLDivElement>(null)
   const promptHistoryRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll chat messages
-  useEffect(() => {
-    if (chatMessagesRef.current) {
-      chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
-    }
-  }, [chatHistory, isChatLoading])
 
   // Auto-scroll prompt history to latest
   useEffect(() => {
     if (promptHistoryRef.current) {
-      promptHistoryRef.current.scrollTop = promptHistoryRef.current.scrollHeight
+      // Use setTimeout to ensure DOM is updated before scrolling
+      setTimeout(() => {
+        if (promptHistoryRef.current) {
+          // Smooth scroll to bottom
+          promptHistoryRef.current.scrollTo({
+            top: promptHistoryRef.current.scrollHeight,
+            behavior: 'smooth'
+          })
+        }
+      }, 100)
     }
   }, [promptHistory])
+
+  // Auto-scroll when modification status changes
+  useEffect(() => {
+    if (promptHistoryRef.current && isModifying) {
+      // Scroll to bottom when modification starts
+      setTimeout(() => {
+        if (promptHistoryRef.current) {
+          promptHistoryRef.current.scrollTo({
+            top: promptHistoryRef.current.scrollHeight,
+            behavior: 'smooth'
+          })
+        }
+      }, 100)
+    }
+  }, [isModifying])
 
   // Load prompt history from API
   const getLanguageFromType = (type: string): string => {
@@ -178,22 +182,9 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (project) {
       fetchPromptHistory()
-      
-      // Auto-select the first file if none is selected (prioritize index files)
-      if (!selectedFile && project.files && project.files.length > 0) {
-        // Find index file first, otherwise use first file
-        const indexFile = project.files.find(file => 
-          file.path.toLowerCase().includes('index.') || 
-          file.path.toLowerCase().endsWith('index.html') ||
-          file.path.toLowerCase().endsWith('index.js')
-        )
-        const firstFile = indexFile || project.files[0]
-        console.log('Auto-selecting first file:', firstFile.path, 'Content length:', firstFile.content?.length)
-        setSelectedFile(firstFile)
-        setFileContent(firstFile.content || '')
-      }
+      // File selection is now handled by the separate useEffect below
     }
-  }, [project, selectedFile])
+  }, [project])
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -205,6 +196,110 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       fetchProject()
     }
   }, [session, status, router, params.id])
+
+  // Reset to index/home file on page load/reload
+  useEffect(() => {
+    // Reset selected file when component mounts or project ID changes
+    setSelectedFile(null)
+    setFileContent('')
+  }, [params.id])
+
+  // Auto-select index/home file only when project first loads (not when user manually selects files)
+  useEffect(() => {
+    if (project && project.files && project.files.length > 0 && !selectedFile) {
+      // Only auto-select when no file is currently selected (initial load)
+      const indexHtmlFile = project.files.find(file => 
+        file.path.toLowerCase().endsWith('index.html')
+      )
+      const homeHtmlFile = project.files.find(file => 
+        file.path.toLowerCase().endsWith('home.html')
+      )
+      const indexJsFile = project.files.find(file => 
+        file.path.toLowerCase().endsWith('index.js')
+      )
+      const firstHtmlFile = project.files.find(file => 
+        file.path.toLowerCase().endsWith('.html')
+      )
+      
+      const priorityFile = indexHtmlFile || homeHtmlFile || indexJsFile || firstHtmlFile || project.files[0]
+      
+      console.log('Auto-selecting priority file on initial load:', priorityFile.path)
+      setSelectedFile(priorityFile)
+      setFileContent(priorityFile.content || '')
+    }
+  }, [project]) // Removed selectedFile from dependencies to prevent re-running when user selects files
+
+  // Auto-refresh when project is generating
+  useEffect(() => {
+    if (project?.status === 'GENERATING') {
+      const interval = setInterval(() => {
+        fetchProject()
+      }, 2000) // Poll every 2 seconds
+
+      return () => clearInterval(interval)
+    }
+  }, [project?.status])
+
+  // Handle streaming status updates from the API
+  useEffect(() => {
+    if (project?.status === 'GENERATING') {
+      // Set up EventSource to listen for streaming updates
+      const eventSource = new EventSource(`/api/projects/${params.id}/stream`)
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          
+          if (data.type === 'status') {
+            // Update status and progress from API response
+            setStreamingStatus(data.data.status)
+            setStreamingProgress(data.data.progress)
+            
+            // Add to status history
+            setStreamingStatusHistory(prev => {
+              const newHistory = [...prev, data.data.status]
+              return newHistory.slice(-8) // Keep last 8 status updates
+            })
+          } else if (data.type === 'file') {
+            // Add new file to streaming files
+            setStreamingFiles(prev => [...prev, data.data])
+          } else if (data.type === 'complete') {
+            // Generation completed
+            setStreamingStatus('Generation completed!')
+            setStreamingProgress(100)
+            setStreamingStatusHistory(prev => [...prev, 'Generation completed!'])
+            
+            // Close the event source
+            eventSource.close()
+            
+            // Refresh the project data to get the latest files
+            setTimeout(() => {
+              window.location.reload()
+            }, 1000)
+          } else if (data.type === 'error') {
+            // Handle error
+            setStreamingStatus('Generation failed')
+            setStreamingStatusHistory(prev => [...prev, 'Generation failed'])
+            eventSource.close()
+          }
+        } catch (error) {
+          console.error('Error parsing streaming data:', error)
+        }
+      }
+      
+      eventSource.onerror = (error) => {
+        console.error('EventSource failed:', error)
+        eventSource.close()
+      }
+      
+      return () => {
+        eventSource.close()
+      }
+    } else if (project?.status === 'COMPLETED') {
+      setStreamingStatus('Generation completed!')
+      setStreamingProgress(100)
+    }
+  }, [project?.status, params.id])
 
   // Handle iframe navigation messages
   useEffect(() => {
@@ -351,17 +446,46 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       return
     }
 
+    let finalPrompt = modificationPrompt
     const promptId = addPromptToHistory(modificationPrompt, 'update', 'pending')
     setIsModifying(true)
     
     try {
+      // If enhance is enabled, enhance the prompt first
+      if (enhancePrompt) {
+        try {
+          const enhanceResponse = await fetch('/api/ai/enhance-prompt', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              prompt: modificationPrompt,
+              context: 'website-modification',
+              projectType: 'website'
+            }),
+          })
+
+          if (enhanceResponse.ok) {
+            const enhanceData = await enhanceResponse.json()
+            if (enhanceData.success && enhanceData.enhancedPrompt) {
+              finalPrompt = enhanceData.enhancedPrompt
+              // Don't add enhanced prompt to history - keep only user's original prompt
+            }
+          }
+        } catch (enhanceError) {
+          console.warn('Prompt enhancement failed, using original prompt:', enhanceError)
+          // Continue with original prompt if enhancement fails
+        }
+      }
+
       const response = await fetch(`/api/projects/${params.id}/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: modificationPrompt,
+          prompt: finalPrompt,
           provider: 'cerebras', // Default to cerebras
           isModification: true,
           currentFiles: project.files.map(file => ({
@@ -378,7 +502,11 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
             toast.success('Project updated successfully!')
             // Extract content from the AI response
             const aiResponseContent = data.content
-            updatePromptStatus(promptId, 'success', aiResponseContent)
+            // Show different message based on whether enhancement was used
+            const statusMessage = enhancePrompt 
+              ? `Enhanced prompt applied: ${aiResponseContent}` 
+              : aiResponseContent
+            updatePromptStatus(promptId, 'success', statusMessage)
             
             // Refresh the project data and prompt history
             await fetchProject()
@@ -399,17 +527,6 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     }
   }
 
-  const clearChatHistory = () => {
-    setChatHistory([
-      {
-        id: '1',
-        type: 'ai',
-        message: 'Hello! I\'m here to help you with your project. What would you like to know?',
-        timestamp: new Date(),
-        provider: chatProvider
-      }
-    ])
-  }
 
   const clearPromptHistory = async () => {
     try {
@@ -431,69 +548,6 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     }
   }
 
-  const handleChatMessage = async () => {
-    if (!chatMessage.trim()) {
-      return
-    }
-
-    const userMessage = chatMessage.trim()
-    setIsChatLoading(true)
-    
-    // Add user message to history
-    const userMessageId = Date.now().toString()
-    setChatHistory(prev => [...prev, {
-      id: userMessageId,
-      type: 'user',
-      message: userMessage,
-      timestamp: new Date()
-    }])
-    
-    // Clear the input
-    setChatMessage('')
-    
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: userMessage,
-          provider: chatProvider,
-          projectId: params.id
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok && data.success) {
-        // Add AI response to history
-        setChatHistory(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          type: 'ai',
-          message: data.response,
-          timestamp: new Date(),
-          provider: data.provider
-        }])
-      } else {
-        throw new Error(data.error || 'Failed to get AI response')
-      }
-    } catch (error) {
-      console.error('Chat error:', error)
-      toast.error('Failed to send message')
-      
-      // Add error message to history
-      setChatHistory(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        type: 'ai',
-        message: 'Sorry, I encountered an error. Please try again.',
-        timestamp: new Date(),
-        provider: chatProvider
-      }])
-    } finally {
-      setIsChatLoading(false)
-    }
-  }
 
   const handleAISuggestion = async () => {
     if (!modificationPrompt.trim()) {
@@ -545,8 +599,15 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
 
   const handleFileSelect = (file: any) => {
     console.log('Selecting file:', file.path, 'Content length:', file.content?.length)
+    console.log('File content preview:', file.content?.substring(0, 200) + '...')
+    console.log('File type:', file.type)
+    
+    // Use the original AI-generated content directly
+    let content = file.content || ''
+    console.log('Using original AI-generated content for', file.path, 'length:', content.length)
+    
     setSelectedFile(file)
-    setFileContent(file.content || '')
+    setFileContent(content)
   }
 
   const toggleFolder = (folderPath: string) => {
@@ -588,11 +649,264 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     const jsFiles = project.files?.filter(f => f.type === 'JAVASCRIPT') || []
     const jsContent = jsFiles.map(f => f.content).join('\n')
     
+    // Advanced project detection and logging
+    const htmlFiles = project.files?.filter(f => f.type === 'HTML') || []
+    const isAdvancedProject = htmlFiles.length >= 5 && cssFiles.length >= 2 && jsFiles.length >= 2
+    
+    if (isAdvancedProject) {
+      console.log(`🚀 Advanced project detected: ${htmlFiles.length} HTML files, ${cssFiles.length} CSS files, ${jsFiles.length} JS files`)
+      console.log(`📁 HTML files: ${htmlFiles.map(f => f.path).join(', ')}`)
+      console.log(`🎨 CSS files: ${cssFiles.map(f => f.path).join(', ')}`)
+      console.log(`⚡ JS files: ${jsFiles.map(f => f.path).join(', ')}`)
+      console.log(`📊 Total files: ${project.files?.length || 0}`)
+    }
+    
     // Inject CSS into the HTML
     if (cssContent) {
       // Keep external CSS links (fonts, CDNs) but remove local CSS links
       htmlContent = htmlContent.replace(/<link[^>]*rel=["']stylesheet["'][^>]*href=["'][^"']*\.css["'][^>]*>/gi, '')
-      htmlContent = htmlContent.replace('</head>', `<style>\n${cssContent}\n</style>\n</head>`)
+      
+      // Add Bootstrap CSS and Icons if the HTML references Bootstrap
+      let bootstrapCSS = ''
+      if (htmlContent.includes('bootstrap') || htmlContent.includes('data-bs-') || htmlContent.includes('data-toggle')) {
+        bootstrapCSS = '<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">'
+      }
+      
+      // Add all popular CDN libraries if the HTML uses them
+      let cdnLibraries = ''
+      
+      // Icon Libraries
+      if (htmlContent.includes('bi bi-') || htmlContent.includes('bootstrap-icons')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">\n'
+      }
+      if (htmlContent.includes('fa fa-') || htmlContent.includes('fas fa-') || htmlContent.includes('far fa-') || htmlContent.includes('fab fa-') || htmlContent.includes('font-awesome')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">\n'
+      }
+      if (htmlContent.includes('material-icons') || htmlContent.includes('material-symbols')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">\n'
+      }
+      if (htmlContent.includes('feather-') || htmlContent.includes('feather-icons')) {
+        cdnLibraries += '<script src="https://unpkg.com/feather-icons"></script>\n'
+      }
+      if (htmlContent.includes('heroicon') || htmlContent.includes('heroicons')) {
+        cdnLibraries += '<script src="https://unpkg.com/@heroicons/react@2.0.18/24/outline/index.js"></script>\n'
+      }
+      if (htmlContent.includes('lucide') || htmlContent.includes('lucide-react')) {
+        cdnLibraries += '<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>\n'
+      }
+      
+      // CSS Frameworks
+      if (htmlContent.includes('tailwind') || htmlContent.includes('tw-') || htmlContent.includes('bg-blue-')) {
+        cdnLibraries += '<script src="https://cdn.tailwindcss.com"></script>\n'
+      }
+      if (htmlContent.includes('bulma') || htmlContent.includes('is-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">\n'
+      }
+      if (htmlContent.includes('foundation') || htmlContent.includes('foundation-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/foundation-sites@6.7.5/dist/css/foundation.min.css">\n'
+      }
+      if (htmlContent.includes('semantic-ui') || htmlContent.includes('ui ')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">\n'
+      }
+      if (htmlContent.includes('materialize') || htmlContent.includes('materialize-css')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">\n'
+      }
+      
+      // Animation Libraries
+      if (htmlContent.includes('animate') || htmlContent.includes('animated') || htmlContent.includes('fadeIn')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">\n'
+      }
+      if (htmlContent.includes('aos') || htmlContent.includes('data-aos')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://unpkg.com/aos@2.3.1/dist/aos.css">\n'
+      }
+      if (htmlContent.includes('gsap') || htmlContent.includes('TweenMax') || htmlContent.includes('TimelineMax')) {
+        cdnLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>\n'
+      }
+      if (htmlContent.includes('lottie') || htmlContent.includes('lottie-player')) {
+        cdnLibraries += '<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>\n'
+      }
+      
+      // Chart Libraries
+      if (htmlContent.includes('chart.js') || htmlContent.includes('Chart')) {
+        cdnLibraries += '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n'
+      }
+      if (htmlContent.includes('d3') || htmlContent.includes('d3-')) {
+        cdnLibraries += '<script src="https://d3js.org/d3.v7.min.js"></script>\n'
+      }
+      if (htmlContent.includes('plotly') || htmlContent.includes('Plotly')) {
+        cdnLibraries += '<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>\n'
+      }
+      if (htmlContent.includes('highcharts') || htmlContent.includes('Highcharts')) {
+        cdnLibraries += '<script src="https://code.highcharts.com/highcharts.js"></script>\n'
+      }
+      
+      // UI Component Libraries
+      if (htmlContent.includes('swiper') || htmlContent.includes('swiper-container')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@8/swiper-bundle.min.css">\n'
+      }
+      if (htmlContent.includes('slick') || htmlContent.includes('slick-carousel')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.css">\n'
+      }
+      if (htmlContent.includes('owl-carousel') || htmlContent.includes('owl-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.carousel.min.css">\n'
+      }
+      if (htmlContent.includes('lightbox') || htmlContent.includes('data-lightbox')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.4/css/lightbox.min.css">\n'
+      }
+      if (htmlContent.includes('fancybox') || htmlContent.includes('data-fancybox')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css">\n'
+      }
+      
+      // Form Libraries
+      if (htmlContent.includes('select2') || htmlContent.includes('select2-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">\n'
+      }
+      if (htmlContent.includes('flatpickr') || htmlContent.includes('flatpickr-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">\n'
+      }
+      if (htmlContent.includes('quill') || htmlContent.includes('ql-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.quilljs.com/1.3.6/quill.snow.css">\n'
+      }
+      
+      // Utility Libraries
+      if (htmlContent.includes('lodash') || htmlContent.includes('_.')) {
+        cdnLibraries += '<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>\n'
+      }
+      if (htmlContent.includes('moment') || htmlContent.includes('moment.js')) {
+        cdnLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>\n'
+      }
+      if (htmlContent.includes('dayjs') || htmlContent.includes('day.js')) {
+        cdnLibraries += '<script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/dayjs.min.js"></script>\n'
+      }
+      
+      // Google Fonts
+      if (htmlContent.includes('google-fonts') || htmlContent.includes('fonts.googleapis.com')) {
+        cdnLibraries += '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+      }
+      
+      htmlContent = htmlContent.replace('</head>', `${bootstrapCSS}\n${cdnLibraries}<style>\n${cssContent}\n</style>\n</head>`)
+    } else {
+      // Add Bootstrap CSS and Icons if needed even without custom CSS
+      let bootstrapCSS = ''
+      if (htmlContent.includes('bootstrap') || htmlContent.includes('data-bs-') || htmlContent.includes('data-toggle')) {
+        bootstrapCSS = '<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">'
+      }
+      
+      // Add all popular CDN libraries if the HTML uses them (same as above)
+      let cdnLibraries = ''
+      
+      // Icon Libraries
+      if (htmlContent.includes('bi bi-') || htmlContent.includes('bootstrap-icons')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">\n'
+      }
+      if (htmlContent.includes('fa fa-') || htmlContent.includes('fas fa-') || htmlContent.includes('far fa-') || htmlContent.includes('fab fa-') || htmlContent.includes('font-awesome')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">\n'
+      }
+      if (htmlContent.includes('material-icons') || htmlContent.includes('material-symbols')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">\n'
+      }
+      if (htmlContent.includes('feather-') || htmlContent.includes('feather-icons')) {
+        cdnLibraries += '<script src="https://unpkg.com/feather-icons"></script>\n'
+      }
+      if (htmlContent.includes('heroicon') || htmlContent.includes('heroicons')) {
+        cdnLibraries += '<script src="https://unpkg.com/@heroicons/react@2.0.18/24/outline/index.js"></script>\n'
+      }
+      if (htmlContent.includes('lucide') || htmlContent.includes('lucide-react')) {
+        cdnLibraries += '<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>\n'
+      }
+      
+      // CSS Frameworks
+      if (htmlContent.includes('tailwind') || htmlContent.includes('tw-') || htmlContent.includes('bg-blue-')) {
+        cdnLibraries += '<script src="https://cdn.tailwindcss.com"></script>\n'
+      }
+      if (htmlContent.includes('bulma') || htmlContent.includes('is-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">\n'
+      }
+      if (htmlContent.includes('foundation') || htmlContent.includes('foundation-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/foundation-sites@6.7.5/dist/css/foundation.min.css">\n'
+      }
+      if (htmlContent.includes('semantic-ui') || htmlContent.includes('ui ')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">\n'
+      }
+      if (htmlContent.includes('materialize') || htmlContent.includes('materialize-css')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">\n'
+      }
+      
+      // Animation Libraries
+      if (htmlContent.includes('animate') || htmlContent.includes('animated') || htmlContent.includes('fadeIn')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">\n'
+      }
+      if (htmlContent.includes('aos') || htmlContent.includes('data-aos')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://unpkg.com/aos@2.3.1/dist/aos.css">\n'
+      }
+      if (htmlContent.includes('gsap') || htmlContent.includes('TweenMax') || htmlContent.includes('TimelineMax')) {
+        cdnLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>\n'
+      }
+      if (htmlContent.includes('lottie') || htmlContent.includes('lottie-player')) {
+        cdnLibraries += '<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>\n'
+      }
+      
+      // Chart Libraries
+      if (htmlContent.includes('chart.js') || htmlContent.includes('Chart')) {
+        cdnLibraries += '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n'
+      }
+      if (htmlContent.includes('d3') || htmlContent.includes('d3-')) {
+        cdnLibraries += '<script src="https://d3js.org/d3.v7.min.js"></script>\n'
+      }
+      if (htmlContent.includes('plotly') || htmlContent.includes('Plotly')) {
+        cdnLibraries += '<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>\n'
+      }
+      if (htmlContent.includes('highcharts') || htmlContent.includes('Highcharts')) {
+        cdnLibraries += '<script src="https://code.highcharts.com/highcharts.js"></script>\n'
+      }
+      
+      // UI Component Libraries
+      if (htmlContent.includes('swiper') || htmlContent.includes('swiper-container')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@8/swiper-bundle.min.css">\n'
+      }
+      if (htmlContent.includes('slick') || htmlContent.includes('slick-carousel')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.css">\n'
+      }
+      if (htmlContent.includes('owl-carousel') || htmlContent.includes('owl-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.carousel.min.css">\n'
+      }
+      if (htmlContent.includes('lightbox') || htmlContent.includes('data-lightbox')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.4/css/lightbox.min.css">\n'
+      }
+      if (htmlContent.includes('fancybox') || htmlContent.includes('data-fancybox')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css">\n'
+      }
+      
+      // Form Libraries
+      if (htmlContent.includes('select2') || htmlContent.includes('select2-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">\n'
+      }
+      if (htmlContent.includes('flatpickr') || htmlContent.includes('flatpickr-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">\n'
+      }
+      if (htmlContent.includes('quill') || htmlContent.includes('ql-')) {
+        cdnLibraries += '<link rel="stylesheet" href="https://cdn.quilljs.com/1.3.6/quill.snow.css">\n'
+      }
+      
+      // Utility Libraries
+      if (htmlContent.includes('lodash') || htmlContent.includes('_.')) {
+        cdnLibraries += '<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>\n'
+      }
+      if (htmlContent.includes('moment') || htmlContent.includes('moment.js')) {
+        cdnLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>\n'
+      }
+      if (htmlContent.includes('dayjs') || htmlContent.includes('day.js')) {
+        cdnLibraries += '<script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/dayjs.min.js"></script>\n'
+      }
+      
+      // Google Fonts
+      if (htmlContent.includes('google-fonts') || htmlContent.includes('fonts.googleapis.com')) {
+        cdnLibraries += '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+      }
+      
+      if (bootstrapCSS || cdnLibraries) {
+        htmlContent = htmlContent.replace('</head>', `${bootstrapCSS}\n${cdnLibraries}</head>`)
+      }
     }
     
     // Create navigation handling script
@@ -635,12 +949,121 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     
     // Inject JavaScript into the HTML
     if (jsContent) {
-      // Remove existing script tags that reference external files
-      htmlContent = htmlContent.replace(/<script[^>]*src=["'][^"']*["'][^>]*><\/script>/gi, '')
-      htmlContent = htmlContent.replace('</body>', `<script>\n${jsContent}\n</script>\n${navigationScript}\n</body>`)
+      // Remove existing script tags that reference external files, but keep essential CDNs
+      htmlContent = htmlContent.replace(/<script[^>]*src=["'][^"']*(?!bootstrap|jquery|popper|chart|d3|plotly|highcharts|gsap|lottie|feather|heroicon|lucide|lodash|moment|dayjs|select2|flatpickr|quill|swiper|slick|owl|lightbox|fancybox|aos|animate)[^"']*["'][^>]*><\/script>/gi, '')
+      
+      // Add JavaScript CDN libraries if the HTML references them
+      let jsLibraries = ''
+      
+      // Core Libraries
+      if (htmlContent.includes('bootstrap') || htmlContent.includes('data-bs-') || htmlContent.includes('data-toggle')) {
+        jsLibraries += '<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>\n'
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>\n'
+        jsLibraries += '<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>\n'
+      }
+      
+      // Animation Libraries
+      if (htmlContent.includes('aos') || htmlContent.includes('data-aos')) {
+        jsLibraries += '<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>\n'
+      }
+      if (htmlContent.includes('gsap') || htmlContent.includes('TweenMax') || htmlContent.includes('TimelineMax')) {
+        jsLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>\n'
+      }
+      if (htmlContent.includes('lottie') || htmlContent.includes('lottie-player')) {
+        jsLibraries += '<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>\n'
+      }
+      
+      // Chart Libraries
+      if (htmlContent.includes('chart.js') || htmlContent.includes('Chart')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n'
+      }
+      if (htmlContent.includes('d3') || htmlContent.includes('d3-')) {
+        jsLibraries += '<script src="https://d3js.org/d3.v7.min.js"></script>\n'
+      }
+      if (htmlContent.includes('plotly') || htmlContent.includes('Plotly')) {
+        jsLibraries += '<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>\n'
+      }
+      if (htmlContent.includes('highcharts') || htmlContent.includes('Highcharts')) {
+        jsLibraries += '<script src="https://code.highcharts.com/highcharts.js"></script>\n'
+      }
+      
+      // UI Component Libraries
+      if (htmlContent.includes('swiper') || htmlContent.includes('swiper-container')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/swiper@8/swiper-bundle.min.js"></script>\n'
+      }
+      if (htmlContent.includes('slick') || htmlContent.includes('slick-carousel')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.min.js"></script>\n'
+      }
+      if (htmlContent.includes('owl-carousel') || htmlContent.includes('owl-')) {
+        jsLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>\n'
+      }
+      if (htmlContent.includes('lightbox') || htmlContent.includes('data-lightbox')) {
+        jsLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.4/js/lightbox.min.js"></script>\n'
+      }
+      if (htmlContent.includes('fancybox') || htmlContent.includes('data-fancybox')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>\n'
+      }
+      
+      // Form Libraries
+      if (htmlContent.includes('select2') || htmlContent.includes('select2-')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>\n'
+      }
+      if (htmlContent.includes('flatpickr') || htmlContent.includes('flatpickr-')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>\n'
+      }
+      if (htmlContent.includes('quill') || htmlContent.includes('ql-')) {
+        jsLibraries += '<script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>\n'
+      }
+      
+      // Utility Libraries
+      if (htmlContent.includes('lodash') || htmlContent.includes('_.')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>\n'
+      }
+      if (htmlContent.includes('moment') || htmlContent.includes('moment.js')) {
+        jsLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>\n'
+      }
+      if (htmlContent.includes('dayjs') || htmlContent.includes('day.js')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/dayjs.min.js"></script>\n'
+      }
+      
+      // Icon Libraries (JavaScript)
+      if (htmlContent.includes('feather-') || htmlContent.includes('feather-icons')) {
+        jsLibraries += '<script src="https://unpkg.com/feather-icons"></script>\n'
+      }
+      if (htmlContent.includes('heroicon') || htmlContent.includes('heroicons')) {
+        jsLibraries += '<script src="https://unpkg.com/@heroicons/react@2.0.18/24/outline/index.js"></script>\n'
+      }
+      if (htmlContent.includes('lucide') || htmlContent.includes('lucide-react')) {
+        jsLibraries += '<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>\n'
+      }
+      
+      htmlContent = htmlContent.replace('</body>', `<script>\n${jsContent}\n</script>\n${jsLibraries}${navigationScript}\n</body>`)
     } else {
-      // Add navigation script even if no other JS
-      htmlContent = htmlContent.replace('</body>', `${navigationScript}\n</body>`)
+      // Add JavaScript CDN libraries if needed even without custom JS
+      let jsLibraries = ''
+      
+      // Core Libraries
+      if (htmlContent.includes('bootstrap') || htmlContent.includes('data-bs-') || htmlContent.includes('data-toggle')) {
+        jsLibraries += '<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>\n'
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>\n'
+        jsLibraries += '<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>\n'
+      }
+      
+      // Add other JavaScript libraries as needed (same logic as above)
+      if (htmlContent.includes('aos') || htmlContent.includes('data-aos')) {
+        jsLibraries += '<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>\n'
+      }
+      if (htmlContent.includes('chart.js') || htmlContent.includes('Chart')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\n'
+      }
+      if (htmlContent.includes('swiper') || htmlContent.includes('swiper-container')) {
+        jsLibraries += '<script src="https://cdn.jsdelivr.net/npm/swiper@8/swiper-bundle.min.js"></script>\n'
+      }
+      if (htmlContent.includes('lightbox') || htmlContent.includes('data-lightbox')) {
+        jsLibraries += '<script src="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.4/js/lightbox.min.js"></script>\n'
+      }
+      
+      htmlContent = htmlContent.replace('</body>', `${jsLibraries}${navigationScript}\n</body>`)
     }
     
     return htmlContent
@@ -842,6 +1265,10 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         )
       } else {
         // Render file
+        const isMainFile = name.toLowerCase().endsWith('index.html') || 
+                          name.toLowerCase().endsWith('home.html') ||
+                          (name.toLowerCase().endsWith('index.js') && !name.toLowerCase().includes('index.html'))
+        
         items.push(
           <div
             key={item.id}
@@ -856,6 +1283,11 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
               <div className="w-4 h-4" /> {/* Spacer for alignment */}
               {getFileIcon(item.path)}
               <span className="truncate">{name}</span>
+              {isMainFile && (
+                <span className="px-1.5 py-0.5 bg-green-600/20 text-green-400 text-xs rounded border border-green-600/30">
+                  Main
+                </span>
+              )}
             </div>
           </div>
         )
@@ -875,6 +1307,125 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
 
   if (!session || !project) {
     return null
+  }
+
+  // Show streaming progress if project is still generating
+  if (project.status === 'GENERATING') {
+    return (
+      <div className="min-h-screen bg-black text-white">
+        <div className="container mx-auto px-4 py-8">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center space-x-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push('/')}
+                className="text-gray-400 hover:text-white"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Home
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold">{project.title}</h1>
+                <p className="text-gray-400">Generating your website...</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2">
+                <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-gray-400">Generating</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Streaming Progress */}
+          <div className="max-w-4xl mx-auto">
+            <Card className="bg-gray-900/50 border-gray-700">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Sparkles className="h-5 w-5 text-blue-400" />
+                  <span>AI Generation in Progress</span>
+                </CardTitle>
+                <CardDescription>
+                  Your website is being generated with advanced AI technology
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Progress Bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Progress</span>
+                      <span>{streamingProgress}% - {streamingStatus || 'Preparing...'}</span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-500" 
+                        style={{ width: `${streamingProgress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Current Status */}
+                  {streamingStatus && (
+                    <div className="flex items-center space-x-3 p-3 bg-gray-800/50 rounded-lg">
+                      <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />
+                      <span>{streamingStatus}</span>
+                    </div>
+                  )}
+
+                  {/* Status History */}
+                  {streamingStatusHistory.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-gray-300">Progress History</h4>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {streamingStatusHistory.map((status, index) => (
+                          <div key={index} className="flex items-center space-x-3 p-2 bg-gray-800/30 rounded text-sm">
+                            <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0" />
+                            <span className="text-gray-300">{status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Files Preview */}
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-gray-300">
+                      Generated Files ({project.files.length + streamingFiles.length})
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                      {/* Existing project files */}
+                      {project.files.map((file, index) => (
+                        <div key={`existing-${index}`} className="flex items-center space-x-2 p-2 bg-gray-800/30 rounded">
+                          <FileText className="h-4 w-4 text-blue-400" />
+                          <span className="text-sm">{file.path}</span>
+                          <CheckCircle className="h-4 w-4 text-green-400" />
+                        </div>
+                      ))}
+                      {/* Streaming files */}
+                      {streamingFiles.map((file, index) => (
+                        <div key={`streaming-${index}`} className="flex items-center space-x-2 p-2 bg-gray-800/30 rounded">
+                          <FileText className="h-4 w-4 text-purple-400" />
+                          <span className="text-sm">{file.path}</span>
+                          <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Auto-refresh notice */}
+                  <div className="text-center text-sm text-gray-400">
+                    <p>This page will automatically update when generation is complete</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -1014,69 +1565,9 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           </div>
           
           {/* Unified Chat and History Area */}
-          <div className="flex-1 p-4 overflow-y-auto min-h-0">
+          <div ref={promptHistoryRef} className="flex-1 p-4 overflow-y-auto min-h-0 scroll-smooth">
             <div className="space-y-4">
-              {/* Sample User Message */}
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-sm font-medium">U</span>
-                </div>
-                <div className="flex-1">
-                  <div className="bg-gray-800 rounded-lg p-3 max-w-md">
-                    <p className="text-sm text-white">
-                      Create a complete AI Website Builder platform using Next.js (latest App Router) with TypeScript, MySQL (via Prisma ORM), and best modern packages/libraries
-                    </p>
-                    <div className="flex items-center mt-2">
-                      <span className="text-xs text-gray-400">This platform</span>
-                      <ArrowLeft className="h-3 w-3 text-gray-400 ml-1" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sample AI Response */}
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-sm font-medium">AI</span>
-                </div>
-                <div className="flex-1">
-                  <div className="bg-gray-800 rounded-lg p-3 max-w-md">
-                    <p className="text-sm text-white">
-                      Cannot proceed here: this repo is Vite + Express, but you requested Next.js (App Router). Please either:
-                    </p>
-                    <ul className="text-sm text-white mt-2 space-y-1">
-                      <li>• Connect a Next.js repo or use our tools: GitHub repo, Local repo, or VS Code extension.</li>
-                      <li>• Then I'll implement the full platform (NextAuth email/Google/GitHub, Prisma MySQL models, AI orchestration for OpenAI/Anthropic/Gemini, Monaco editor, dashboard/history, diff-based updates, S3 export, Zustand, shadcn/framer-motion) and a production homepage. Confirm AI providers to enable and your MySQL host (PlanetScale/RDS), and I'll scaffold immediately.</li>
-                    </ul>
-                    <div className="flex items-center space-x-2 mt-3">
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                        <Copy className="h-3 w-3 text-gray-400" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                        <Star className="h-3 w-3 text-gray-400" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                        <CheckCircle className="h-3 w-3 text-gray-400" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                        <X className="h-3 w-3 text-gray-400" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Restore Button */}
-              <div className="flex justify-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Restore to this point
-                </Button>
-              </div>
+          
 
               {/* Prompt History Items - Merged with Chat */}
               {promptHistory
@@ -1151,39 +1642,22 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
 
           {/* Input Area */}
           <div className="p-4 border-t border-gray-800 flex-shrink-0">
-            {/* Mode Toggle */}
+            {/* Enhance Option */}
             <div className="flex items-center space-x-2 mb-3">
-              <Button
-                variant={inputMode === 'chat' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setInputMode('chat')}
-                className={`px-3 py-1 text-xs ${
-                  inputMode === 'chat' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                <MessageCircle className="h-3 w-3 mr-1" />
-                Chat
-              </Button>
-              <Button
-                variant={inputMode === 'modify' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setInputMode('modify')}
-                className={`px-3 py-1 text-xs ${
-                  inputMode === 'modify' 
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                <Wrench className="h-3 w-3 mr-1" />
-                Modify
-              </Button>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enhancePrompt}
+                  onChange={(e) => setEnhancePrompt(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                />
+                <span className="text-sm text-gray-300">Enhance prompt with AI</span>
+              </label>
             </div>
 
             <div className="relative">
               <textarea
-                placeholder={inputMode === 'chat' ? "Ask AI for suggestions about your project..." : "Describe the changes you want to make..."}
+                placeholder="Describe the changes you want to make to your project..."
                 value={modificationPrompt}
                 onChange={(e) => setModificationPrompt(e.target.value)}
                 className="w-full px-4 py-3 pr-20 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-gray-900 text-white placeholder-gray-400"
@@ -1191,14 +1665,10 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    if (inputMode === 'chat') {
-                      handleAISuggestion()
-                    } else {
                       handleAIModification()
-                    }
                   }
                 }}
-                disabled={isModifying || isGettingSuggestion}
+                disabled={isModifying}
               />
               <div className="absolute right-3 bottom-3 flex items-center space-x-2">
                 <Button 
@@ -1218,16 +1688,12 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                   <Wrench className="h-4 w-4 text-gray-400" />
                 </Button>
                 <Button
-                  onClick={inputMode === 'chat' ? handleAISuggestion : handleAIModification}
-                  disabled={(isModifying || isGettingSuggestion) || !modificationPrompt.trim()}
-                  className={`h-8 w-8 p-0 text-white disabled:opacity-50 disabled:cursor-not-allowed ${
-                    inputMode === 'chat' 
-                      ? 'bg-blue-600 hover:bg-blue-700' 
-                      : 'bg-green-600 hover:bg-green-700'
-                  }`}
-                  title={inputMode === 'chat' ? "Get AI suggestion" : "Apply modification"}
+                  onClick={handleAIModification}
+                  disabled={isModifying || !modificationPrompt.trim()}
+                  className="h-8 w-8 p-0 text-white disabled:opacity-50 disabled:cursor-not-allowed bg-green-600 hover:bg-green-700"
+                  title="Apply modification"
                 >
-                  {(isModifying || isGettingSuggestion) ? (
+                  {isModifying ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Send className="h-4 w-4" />
@@ -1266,7 +1732,6 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        setInputMode('modify')
                         setModificationPrompt(suggestionResponse) // Use the actual AI suggestion content
                         setShowSuggestion(false)
                       }}
@@ -1289,7 +1754,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                     </Button>
                   </div>
                   <span className="text-xs text-gray-400">
-                    Generated by AI • {new Date().toLocaleTimeString()}
+                    Generated by AI • {formatTime(new Date())}
                   </span>
                 </div>
               </div>
@@ -1403,7 +1868,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                               <span className="text-gray-400">Status:</span>
                               <span className={`ml-2 px-2 py-1 rounded text-xs ${
                                 project.status === 'COMPLETED' ? 'bg-green-600 text-white' :
-                                project.status === 'GENERATING' ? 'bg-blue-600 text-white' :
+                                (project.status as string) === 'GENERATING' ? 'bg-blue-600 text-white' :
                                 project.status === 'FAILED' ? 'bg-red-600 text-white' :
                                 'bg-gray-600 text-white'
                               }`}>
@@ -1413,14 +1878,27 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                             <div>
                               <span className="text-gray-400">Files:</span>
                               <span className="ml-2 text-white">{project.files?.length || 0}</span>
+                              {(() => {
+                                const htmlFiles = project.files?.filter(f => f.type === 'HTML') || []
+                                const cssFiles = project.files?.filter(f => f.type === 'CSS') || []
+                                const jsFiles = project.files?.filter(f => f.type === 'JAVASCRIPT') || []
+                                const isAdvanced = htmlFiles.length >= 5 && cssFiles.length >= 2 && jsFiles.length >= 2
+                                
+                                return isAdvanced ? (
+                                  <span className="ml-2 px-2 py-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-xs rounded-full flex items-center">
+                                    <Sparkles className="h-3 w-3 mr-1" />
+                                    Advanced
+                                  </span>
+                                ) : null
+                              })()}
                             </div>
                             <div>
                               <span className="text-gray-400">Created:</span>
-                              <span className="ml-2 text-white">{new Date(project.createdAt).toLocaleDateString()}</span>
+                              <span className="ml-2 text-white">{formatDateOnly(project.createdAt)}</span>
                             </div>
                             <div>
                               <span className="text-gray-400">Last Updated:</span>
-                              <span className="ml-2 text-white">{new Date(project.updatedAt).toLocaleDateString()}</span>
+                              <span className="ml-2 text-white">{formatDateOnly(project.updatedAt)}</span>
                             </div>
                           </div>
                         </div>
@@ -1437,7 +1915,57 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                   <>
                     {/* File Tree Sidebar */}
                     <div className="w-64 bg-gray-800 border-r border-gray-700 p-4">
-                      <h3 className="text-sm font-medium text-white mb-3">Project Files</h3>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-medium text-white">Project Files</h3>
+                        {(() => {
+                          const htmlFiles = project.files?.filter(f => f.type === 'HTML') || []
+                          const cssFiles = project.files?.filter(f => f.type === 'CSS') || []
+                          const jsFiles = project.files?.filter(f => f.type === 'JAVASCRIPT') || []
+                          const isAdvanced = htmlFiles.length >= 5 && cssFiles.length >= 2 && jsFiles.length >= 2
+                          
+                          return isAdvanced ? (
+                            <span className="px-2 py-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-xs rounded-full flex items-center">
+                              <Sparkles className="h-3 w-3 mr-1" />
+                              Advanced
+                            </span>
+                          ) : null
+                        })()}
+                      </div>
+                      {/* Advanced Project File Breakdown */}
+                      {(() => {
+                        const htmlFiles = project.files?.filter(f => f.type === 'HTML') || []
+                        const cssFiles = project.files?.filter(f => f.type === 'CSS') || []
+                        const jsFiles = project.files?.filter(f => f.type === 'JAVASCRIPT') || []
+                        const otherFiles = project.files?.filter(f => !['HTML', 'CSS', 'JAVASCRIPT'].includes(f.type)) || []
+                        const isAdvanced = htmlFiles.length >= 5 && cssFiles.length >= 2 && jsFiles.length >= 2
+                        
+                        return isAdvanced ? (
+                          <div className="mb-3 p-2 bg-gray-700/50 rounded text-xs">
+                            <div className="text-gray-300 mb-1">File Breakdown:</div>
+                            <div className="space-y-1">
+                              <div className="flex justify-between">
+                                <span className="text-blue-400">HTML:</span>
+                                <span className="text-white">{htmlFiles.length}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-green-400">CSS:</span>
+                                <span className="text-white">{cssFiles.length}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-yellow-400">JS:</span>
+                                <span className="text-white">{jsFiles.length}</span>
+                              </div>
+                              {otherFiles.length > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Other:</span>
+                                  <span className="text-white">{otherFiles.length}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : null
+                      })()}
+                      
                       <div className="space-y-1 overflow-y-auto max-h-[calc(100vh-200px)]">
                         {project.files && project.files.length > 0 ? (
                           renderFolderStructure(sortFilesWithIndexFirst(organizeFilesIntoFolders(project.files)))
@@ -1752,95 +2280,6 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       </div>
 
 
-          {/* Fixed AI Chat Widget */}
-          <div className="fixed bottom-6 right-6 z-50">
-            {!isChatOpen ? (
-              <Button
-                onClick={() => setIsChatOpen(true)}
-                className="w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
-              >
-                <MessageCircle className="h-6 w-6" />
-              </Button>
-            ) : (
-              <div className="w-80 h-96 bg-gray-900 border border-gray-700 rounded-lg shadow-xl flex flex-col">
-                {/* Chat Header */}
-                <div className="flex items-center justify-between p-4 border-b border-gray-700">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">AI</span>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-white">AI Assistant</h3>
-                      <p className="text-xs text-gray-400">Ask me anything!</p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsChatOpen(false)}
-                    className="h-8 w-8 p-0 hover:bg-gray-700"
-                  >
-                    <X className="h-4 w-4 text-gray-400" />
-                  </Button>
-                </div>
-
-                {/* Chat Messages */}
-                <div ref={chatMessagesRef} className="flex-1 p-4 overflow-y-auto space-y-3">
-                  {chatHistory.map((message) => (
-                    <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-xs px-3 py-2 rounded-lg ${
-                        message.type === 'user' 
-                          ? 'bg-blue-600 text-white' 
-                          : 'bg-gray-800 text-white'
-                      }`}>
-                        <p className="text-sm">{message.message}</p>
-                        <p className="text-xs opacity-70 mt-1">
-                          {formatRelativeTime(message.timestamp)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                  {isChatLoading && (
-                    <div className="flex justify-start">
-                      <div className="bg-gray-800 text-white px-3 py-2 rounded-lg">
-                        <div className="flex items-center space-x-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span className="text-sm">AI is thinking...</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Chat Input */}
-                <div className="p-4 border-t border-gray-700">
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      value={chatMessage}
-                      onChange={(e) => setChatMessage(e.target.value)}
-                      placeholder="Ask AI for help..."
-                      className="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          handleChatMessage()
-                        }
-                      }}
-                      disabled={isChatLoading}
-                    />
-                    <Button
-                      onClick={handleChatMessage}
-                      disabled={isChatLoading || !chatMessage.trim()}
-                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
     </div>
   )
 }

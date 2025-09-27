@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enhanceUserPrompt } from '@/lib/ai/prompt-enhancer'
 import { logger, extractRequestContext } from '@/lib/logger'
+import { formatDateOnly } from '@/lib/utils'
 import { z } from 'zod'
 
 const suggestSchema = z.object({
@@ -212,7 +213,7 @@ Format your response in a clear, structured way that's easy to read and implemen
 - **Files**: ${projectContext.files.length} files
 - **Types**: ${Array.from(new Set(fileTypes)).join(', ')}
 - **Status**: ${projectContext.status}
-- **Created**: ${new Date(project.createdAt).toLocaleDateString()}
+- **Created**: ${formatDateOnly(project.createdAt)}
 
 **Your Request**: "${prompt}"
 
