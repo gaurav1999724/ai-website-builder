@@ -579,7 +579,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       hasImages: !!images?.length
     })
 
-    return await tryWithFallbackModels(async (modelName): Promise<AIResponse> => {
+    return await tryWithFallbackModels(async (modelName) => {
       const chatSession = createCodeGenerationSession(modelName)
       // Enhance prompt with image information if images are provided
       let enhancedPrompt = prompt
