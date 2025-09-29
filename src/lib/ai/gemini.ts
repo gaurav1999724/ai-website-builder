@@ -31,17 +31,14 @@ function cleanJsonContent(jsonString: string): string {
     
     let cleanedJson = jsonString.substring(jsonStart, jsonEnd + 1)
     
-    // Fix common JSON issues
+    // Fix common JSON issues - be more careful with control characters
     cleanedJson = cleanedJson
       .replace(/,\s*}/g, '}') // Remove trailing commas before closing braces
       .replace(/,\s*]/g, ']') // Remove trailing commas before closing brackets
-      // Fix control characters that cause JSON parsing errors
-      .replace(/\n/g, '\\n') // Escape unescaped newlines
-      .replace(/\r/g, '\\r') // Escape unescaped carriage returns
-      .replace(/\t/g, '\\t') // Escape unescaped tabs
-      .replace(/\b/g, '\\b') // Escape backspaces
+      // Only escape control characters that are actually problematic
+      .replace(/\r/g, '\\r') // Escape carriage returns
       .replace(/\f/g, '\\f') // Escape form feeds
-      // Fix unescaped backslashes
+      // Fix unescaped backslashes (but not word boundaries)
       .replace(/([^\\])\\([^"\\\/bfnrt])/g, '$1\\\\$2')
     
     // Try to complete incomplete JSON
@@ -304,9 +301,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       const text = result.response.text()
       
       await logger.info('Gemini raw response received', {
-        model: modelName,
-        responseLength: text.length,
-        responsePreview: text.substring(0, 200) + '...'
+        htmlContent: result,
       })
 
       // Parse the JSON response with improved error handling
@@ -322,17 +317,30 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       // Try to fix common JSON issues with comprehensive approach
       try {
         console.log('🔍 Parsing Gemini JSON response, length:', jsonContent.length)
+        console.log('📄 JSON preview:', jsonContent.substring(0, 200) + '...')
         
-        // Use the comprehensive JSON cleaning function
-        jsonContent = cleanJsonContent(jsonContent)
-        console.log('🧹 Cleaned JSON length:', jsonContent.length)
-        
-        parsedResponse = JSON.parse(jsonContent)
-        await logger.info('Successfully parsed Gemini response', {
-          model: modelName,
-          hasContent: !!parsedResponse.content,
-          filesCount: Array.isArray(parsedResponse.files) ? parsedResponse.files.length : 0
-        })
+        // First try to parse without cleaning
+        try {
+          parsedResponse = JSON.parse(jsonContent)
+          await logger.info('Successfully parsed Gemini response (no cleaning needed)', {
+            model: modelName,
+            hasContent: !!parsedResponse.content,
+            filesCount: Array.isArray(parsedResponse.files) ? parsedResponse.files.length : 0
+          })
+        } catch (initialError) {
+          console.log('⚠️ Initial JSON parse failed, attempting to clean...')
+          
+          // Use the comprehensive JSON cleaning function
+          jsonContent = cleanJsonContent(jsonContent)
+          console.log('🧹 Cleaned JSON length:', jsonContent.length)
+          
+          parsedResponse = JSON.parse(jsonContent)
+          await logger.info('Successfully parsed Gemini response (after cleaning)', {
+            model: modelName,
+            hasContent: !!parsedResponse.content,
+            filesCount: Array.isArray(parsedResponse.files) ? parsedResponse.files.length : 0
+          })
+        }
       } catch (parseError) {
         await logger.error('Failed to parse Gemini response', parseError as Error, {
           model: modelName,
@@ -346,9 +354,17 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
         try {
           console.log('🔍 Attempting regex-based file extraction from Gemini response')
           
+          // Try multiple regex patterns to capture different file formats (same as Cerebras)
           const filePatterns = [
-            /"path":\s*"([^"]+)",\s*"content":\s*"((?:[^"\\]|\\.)*)"/g,
+            // Pattern 1: Standard JSON object format
+            /\{[^}]*"path":\s*"([^"]*)"[^}]*"content":\s*"([^"]*(?:\\"[^"]*)*)"[^}]*\}/g,
+            // Pattern 2: More flexible format with escaped content
+            /\{[^}]*"path":\s*"([^"]*)"[^}]*"content":\s*"((?:[^"\\]|\\.)*)"[^}]*\}/g,
+            // Pattern 3: Single line format
+            /"path":\s*"([^"]*)",\s*"content":\s*"((?:[^"\\]|\\.)*)"/g,
+            // Pattern 4: Alternative format
             /"path":\s*"([^"]+)",\s*"content":\s*"([^"]*(?:\\.[^"]*)*)"/g,
+            // Pattern 5: More flexible pattern
             /"path":\s*"([^"]+)",\s*"content":\s*"([^"]*(?:\\.[^"]*)*?)"/g
           ]
           
@@ -357,7 +373,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
           for (const pattern of filePatterns) {
             const matches = text.match(pattern)
             if (matches && matches.length > 0) {
-              console.log(`✅ Found ${matches.length} files with pattern`)
+              console.log(`✅ Found ${matches.length} files with pattern ${filePatterns.indexOf(pattern) + 1}`)
               
               for (const match of matches) {
                 const pathMatch = match.match(/"path":\s*"([^"]+)"/)
@@ -382,7 +398,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
               }
               
               if (extractedFiles.length > 0) {
-                break
+                break // Use the first pattern that found files
               }
             }
           }
