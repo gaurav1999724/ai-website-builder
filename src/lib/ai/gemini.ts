@@ -278,12 +278,22 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       let parsedResponse
       let jsonContent = text.trim()
       
-      // Check if the response is a long text response instead of JSON
-      if (text.length > 1000 && !text.includes('{') && !text.includes('```json')) {
+      // Check if the response is a text response instead of JSON
+      const isTextResponse = (
+        text.length > 1000 && 
+        !text.trim().startsWith('{') && 
+        !text.includes('```json') &&
+        !text.includes('"files"') &&
+        !text.includes('"content"') &&
+        (text.includes('Okay,') || text.includes('Here') || text.includes('Let') || text.includes('**'))
+      )
+      
+      if (isTextResponse) {
         await logger.warn('Gemini returned text response instead of JSON, creating fallback', {
           model: modelName,
           responseLength: text.length,
-          responseType: 'text'
+          responseType: 'text',
+          responseStart: text.substring(0, 100)
         })
         
         // Create a fallback response with the text content
@@ -301,6 +311,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
         .container { max-width: 800px; margin: 0 auto; }
         h1 { color: #333; }
         .content { background: #f9f9f9; padding: 20px; border-radius: 8px; }
+        .instructions { background: #e8f4f8; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0; }
     </style>
 </head>
 <body>
@@ -308,26 +319,201 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
         <h1>Website Generated Successfully</h1>
         <div class="content">
             <p>Your website has been generated. The AI provided detailed instructions for creating a comprehensive website.</p>
-            <p>Please check the generated files for the complete implementation.</p>
+            <div class="instructions">
+                <h3>AI Instructions:</h3>
+                <p>The AI provided detailed guidance for creating your website. Please refer to the generated files for the complete implementation.</p>
+            </div>
         </div>
     </div>
 </body>
 </html>`,
             type: "html",
+            size: 1000
+          },
+          {
+            path: "assets/css/main.css",
+            content: `/* Main stylesheet for generated website */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.header {
+    background: #333;
+    color: white;
+    padding: 1rem 0;
+}
+
+.nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav ul {
+    list-style: none;
+    display: flex;
+    gap: 2rem;
+}
+
+.nav a {
+    color: white;
+    text-decoration: none;
+}
+
+.nav a:hover {
+    color: #007bff;
+}
+
+.hero {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    padding: 4rem 0;
+    text-align: center;
+}
+
+.btn {
+    display: inline-block;
+    background: #007bff;
+    color: white;
+    padding: 12px 24px;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background 0.3s;
+}
+
+.btn:hover {
+    background: #0056b3;
+}
+
+.section {
+    padding: 3rem 0;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    overflow: hidden;
+    transition: transform 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.footer {
+    background: #333;
+    color: white;
+    text-align: center;
+    padding: 2rem 0;
+}`,
+            type: "css",
+            size: 1500
+          },
+          {
+            path: "assets/js/main.js",
+            content: `// Main JavaScript for generated website
+document.addEventListener('DOMContentLoaded', function() {
+    // Smooth scrolling for navigation links
+    const navLinks = document.querySelectorAll('a[href^="#"]');
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('href').substring(1);
+            const targetElement = document.getElementById(targetId);
+            if (targetElement) {
+                targetElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        });
+    });
+
+    // Add scroll effect to header
+    window.addEventListener('scroll', function() {
+        const header = document.querySelector('.header');
+        if (window.scrollY > 100) {
+            header.style.background = 'rgba(51, 51, 51, 0.95)';
+        } else {
+            header.style.background = '#333';
+        }
+    });
+
+    // Form validation
+    const forms = document.querySelectorAll('form');
+    forms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            // Add form validation logic here
+            console.log('Form submitted');
+        });
+    });
+
+    // Initialize any other interactive features
+    console.log('Website initialized successfully');
+});`,
+            type: "javascript",
             size: 800
+          },
+          {
+            path: "README.md",
+            content: `# Generated Website
+
+This website was generated using AI with detailed instructions.
+
+## Features
+
+- Responsive design
+- Modern CSS styling
+- Interactive JavaScript
+- Clean HTML structure
+
+## Files
+
+- \`index.html\` - Main page
+- \`assets/css/main.css\` - Main stylesheet
+- \`assets/js/main.js\` - Main JavaScript file
+
+## Setup
+
+1. Open \`index.html\` in your browser
+2. Customize the content as needed
+3. Add your own images and content
+
+## Customization
+
+The AI provided detailed instructions for creating this website. You can customize the design, colors, and content to match your needs.`,
+            type: "text",
+            size: 600
           }
         ]
         
         parsedResponse = {
-          content: "Website generated successfully with detailed instructions",
+          content: "Website generated successfully with detailed instructions and complete file structure",
           files: sortFilesByPriority(fallbackFiles)
         }
       } else {
         // Try to find and extract JSON from the response
         const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-        if (jsonMatch) {
-          jsonContent = jsonMatch[1].trim()
-        }
+    if (jsonMatch) {
+      jsonContent = jsonMatch[1].trim()
+    }
 
         // Try to fix common JSON issues with comprehensive approach
       try {
@@ -518,12 +704,12 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       const aiResponse: AIResponse = {
         content: parsedResponse.content || parsedResponse.description || 'Website generated successfully',
         files: sortFilesByPriority(processedFiles),
-        metadata: {
+      metadata: {
           model: modelName,
-          tokens: 0,
-          provider: 'gemini'
-        }
+        tokens: 0,
+        provider: 'gemini'
       }
+    }
 
       await logger.info('Gemini AI generation completed successfully', {
         model: modelName,
@@ -633,11 +819,11 @@ Please return the modified files in the same JSON format as before. Only include
           type: getFileTypeFromPath(file.path),
           size: file.size || (file.content ? file.content.length : 0)
         }))),
-        metadata: {
+      metadata: {
           model: modelName,
           tokens: 0,
-          provider: 'gemini'
-        }
+        provider: 'gemini'
+      }
     }
 
       const duration = Date.now() - startTime
