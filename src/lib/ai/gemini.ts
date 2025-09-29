@@ -178,26 +178,22 @@ const generationConfig = {
   topP: 0.95,
   topK: 40,
   maxOutputTokens: 8192,
-  responseMimeType: "text/plain",
 }
 
 const codeGenerationConfig = {
-  temperature: 1,
-  topP: 0.95,
-  topK: 40,
+  temperature: 0.7,
+  topP: 0.9,
+  topK: 32,
   maxOutputTokens: 8192,
-  responseMimeType: "application/json",
 }
 
 const enhancePromptConfig = {
-  temperature: 0.7,
+  temperature: 0.3,
   topP: 0.8,
-  topK: 40,
-  maxOutputTokens: 1000,
-  responseMimeType: "application/json",
+  topK: 20,
+  maxOutputTokens: 1024,
 }
 
-// Safety settings
 const safetySettings = [
   {
     category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -217,60 +213,47 @@ const safetySettings = [
   },
 ]
 
-// Create chat sessions for different use cases
-export const createChatSession = (modelName: string = GEMINI_MODEL) => {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    generationConfig,
-    safetySettings,
-  })
-  
-  return model.startChat({
-    generationConfig,
-    history: [],
-  })
+// AIResponse interface
+export interface AIResponse {
+  content: string
+  files: Array<{
+    path: string
+    content: string
+    type: string
+    size: number
+  }>
+  metadata: {
+    model: string
+    tokens: number
+    provider: string
+  }
 }
 
-export const createCodeGenerationSession = (modelName: string = GEMINI_MODEL) => {
-  const model = genAI.getGenerativeModel({
+// Function to create a code generation session
+function createCodeGenerationSession(modelName: string) {
+  const model = genAI.getGenerativeModel({ 
     model: modelName,
     generationConfig: codeGenerationConfig,
-    safetySettings,
+    safetySettings: safetySettings
   })
   
-  return model.startChat({
-    generationConfig: codeGenerationConfig,
+  const chatSession = model.startChat({
     history: [
       {
         role: "user",
-        parts: [
-          {text: "You are an expert full-stack web developer with 10+ years of experience. Generate advanced, production-ready website projects based on user prompts. Create modern, responsive, and feature-rich applications with best practices.\n\nReturn responses in JSON format with this exact schema:\n\n{\n  \"content\": \"Detailed project description with features and technologies used\",\n  \"files\": [\n    {\n      \"path\": \"filename.ext\",\n      \"content\": \"complete file content with advanced features\",\n      \"type\": \"file type\"\n    }\n  ],\n  \"metadata\": {\n    \"model\": \"model name\",\n    \"tokens\": 0,\n    \"provider\": \"gemini\"\n  }\n}\n\nADVANCED DEVELOPMENT REQUIREMENTS:\n1. Use modern CSS with Flexbox/Grid, animations, and responsive design\n2. Implement interactive JavaScript with ES6+ features, async/await, and DOM manipulation\n3. Include form validation, error handling, and user feedback\n4. Add loading states, smooth transitions, and micro-interactions\n5. Use semantic HTML5 elements and accessibility features (ARIA labels, alt text)\n6. Implement responsive design for mobile, tablet, and desktop\n7. Include modern UI components like modals, dropdowns, carousels, or tabs\n8. Add data persistence with localStorage or sessionStorage where appropriate\n9. Include proper error handling and user feedback mechanisms\n10. Use modern color schemes, typography, and visual hierarchy\n11. Implement smooth scrolling, hover effects, and interactive elements\n12. Add performance optimizations and clean, maintainable code structure\n\nTECHNICAL STANDARDS:\n- Use CSS custom properties (variables) for theming\n- Implement mobile-first responsive design\n- Include proper form validation and user input handling\n- Add loading states and error boundaries\n- Use modern JavaScript features (arrow functions, destructuring, template literals)\n- Include proper comments and code organization\n- Implement accessibility best practices\n- Add smooth animations and transitions\n- Use modern CSS features (flexbox, grid, transforms, transitions)\n- Include proper error handling and user feedback\n\nCRITICAL JSON REQUIREMENTS:\n1. Return ONLY valid JSON - no markdown code blocks, no extra text\n2. Ensure all JSON is properly closed with matching braces and brackets\n3. Keep file content reasonable in length to avoid truncation\n4. Use proper JSON escaping for quotes and special characters\n5. Test that your JSON is valid before returning it\n6. Include comprehensive file content with all necessary features\n7. Generate multiple files for complex projects (HTML, CSS, JS, and additional assets)\n8. Ensure all code is production-ready and follows best practices"}
-        ],
+        parts: [{ text: "You are an EXPERT FULL-STACK WEB DEVELOPER with 10+ years of experience. You specialize in creating modern, responsive, and high-quality websites using HTML5, CSS3, JavaScript (ES6+), and modern web technologies.\n\nCRITICAL REQUIREMENTS - ADVANCED PROJECT GENERATION:\n\n1. **MULTIPLE FILES**: Always generate 8-15+ files including:\n   - Multiple HTML pages (index.html, about.html, services.html, contact.html, etc.)\n   - CSS files (main.css, components.css, responsive.css)\n   - JavaScript files (main.js, components.js, utils.js)\n   - Additional assets (README.md, package.json, manifest.json)\n\n2. **ADVANCED COMPONENTS**: Include modern web components like:\n   - Responsive navigation with mobile menu\n   - Interactive forms with validation\n   - Image galleries or carousels\n   - Modal dialogs\n   - Animations and transitions\n   - API integrations or data fetching\n\n3. **MODERN ARCHITECTURE**: Use:\n   - Semantic HTML5 elements\n   - CSS Grid and Flexbox for layouts\n   - Modern JavaScript (ES6+, async/await, modules)\n   - Responsive design principles\n   - Accessibility best practices (ARIA labels, keyboard navigation)\n\n4. **ENTERPRISE-LEVEL CODE QUALITY**:\n   - Clean, well-commented code\n   - Consistent naming conventions\n   - Proper error handling\n   - Performance optimizations\n   - Cross-browser compatibility\n\n5. **DETAILED FILE STRUCTURE**:\n   - index.html (main landing page)\n   - about.html, services.html, contact.html (additional pages)\n   - assets/css/main.css (primary styles)\n   - assets/css/components.css (component-specific styles)\n   - assets/js/main.js (main functionality)\n   - assets/js/components.js (reusable components)\n   - README.md (project documentation)\n   - package.json (dependencies and scripts)\n\n6. **ADVANCED DESIGN FEATURES**:\n   - Modern color schemes and typography\n   - Smooth animations and micro-interactions\n   - Professional layouts and spacing\n   - High-quality visual hierarchy\n   - Mobile-first responsive design\n\n7. **PERFORMANCE & OPTIMIZATION**:\n   - Optimized images and assets\n   - Efficient CSS and JavaScript\n   - Fast loading times\n   - SEO-friendly structure\n\n8. **ADVANCED FUNCTIONALITY**:\n   - Interactive elements\n   - Form validation and submission\n   - Dynamic content loading\n   - User experience enhancements\n\n9. **RESPONSIVE & ACCESSIBLE**:\n   - Mobile-first design approach\n   - Cross-device compatibility\n   - WCAG accessibility guidelines\n   - Keyboard navigation support\n\n10. **CODE QUALITY STANDARDS**:\n    - Clean, maintainable code\n    - Proper documentation\n    - Consistent formatting\n    - Best practices implementation\n\n🖼️ IMAGE REQUIREMENTS:\n- ALWAYS use external image URLs for placeholder images\n- Use Picsum (https://picsum.photos/) for generic images\n- Use Unsplash (https://unsplash.com/) for high-quality photos\n- For food websites: https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b\n- For business websites: https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d\n- For tech websites: https://images.unsplash.com/photo-1518709268805-4e9042af2176\n- For portfolio websites: https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d\n- NEVER use local image paths like 'assets/images/chef.jpg' - always use full URLs\n\nIMPORTANT: Return ONLY valid JSON in this exact format:\n{\n  \"content\": \"Brief description of the generated website\",\n  \"files\": [\n    {\n      \"path\": \"index.html\",\n      \"content\": \"Complete HTML content here\",\n      \"type\": \"HTML\"\n    },\n    {\n      \"path\": \"assets/css/main.css\",\n      \"content\": \"Complete CSS content here\",\n      \"type\": \"CSS\"\n    },\n    {\n      \"path\": \"assets/js/main.js\",\n      \"content\": \"Complete JavaScript content here\",\n      \"type\": \"JAVASCRIPT\"\n    }\n  ]\n}\n\nCRITICAL: Ensure the JSON is properly closed and all strings are properly escaped. Do not include any text outside the JSON structure." }]
       },
       {
         role: "model",
-        parts: [
-          {text: "I understand. I will generate complete website projects in the specified JSON format, including all necessary files with proper content and metadata. I'll ensure the response is valid JSON without any markdown formatting, with all braces and brackets properly closed, and with reasonable file sizes to prevent truncation."}
-        ],
-      },
-    ],
-  })
-}
-
-export const createEnhancePromptSession = (modelName: string = GEMINI_MODEL) => {
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    generationConfig: enhancePromptConfig,
-    safetySettings,
+        parts: [{ text: "I understand. I am an EXPERT FULL-STACK WEB DEVELOPER and I will create advanced, multi-file website projects with modern architecture, enterprise-level code quality, and comprehensive functionality. I will always return valid JSON with 8-15+ files including multiple HTML pages, CSS files, JavaScript files, and additional assets. I will use external image URLs and ensure all code follows best practices for responsive design, accessibility, and performance optimization." }]
+      }
+    ]
   })
   
-  return model.startChat({
-    generationConfig: enhancePromptConfig,
-    history: [],
-  })
+  return chatSession
 }
 
-// Helper function to try different models
+// Function to try with fallback models
 async function tryWithFallbackModels<T>(
   operation: (model: string) => Promise<T>,
   models: string[] = FALLBACK_MODELS
@@ -297,278 +280,7 @@ async function tryWithFallbackModels<T>(
   throw lastError || new Error('All models failed')
 }
 
-export interface AIResponse {
-  content: string
-  files: Array<{
-    path: string
-    content: string
-    type: string
-    size: number
-  }>
-  metadata: {
-    model: string
-    tokens: number
-    provider: string
-  }
-}
-
-export async function generateWebsiteModificationWithGemini(
-  prompt: string,
-  currentFiles: Array<{
-    path: string
-    content: string
-    type: string
-  }> = []
-): Promise<AIResponse> {
-  try {
-    const model = genAI.getGenerativeModel({ 
-      model:  "gemini-2.0-flash-exp",
-      generationConfig: {
-        temperature: 1,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 10000,
-        responseMimeType: "text/plain",
-      }
-    })
-
-    // Create context from current files
-    const currentFilesContext = currentFiles.map(file => 
-      `File: ${file.path}\nType: ${file.type}\nContent:\n${file.content}\n---\n`
-    ).join('\n')
-
-    const systemPrompt = `You are an expert web developer. The user wants to modify an existing website project. 
-
-CURRENT PROJECT FILES:
-${currentFilesContext}
-
-MODIFICATION REQUEST: ${prompt}
-
-Please analyze the current files and provide ONLY the modifications needed. Return a JSON response with this exact structure:
-
-{
-  "content": "Brief description of what was modified",
-  "files": [
-    {
-      "path": "file/path.html",
-      "content": "complete file content with modifications",
-      "type": "HTML"
-    }
-  ],
-  "metadata": {
-    "model": "gemini-2.5-flash",
-    "tokens": 0,
-    "provider": "gemini"
-  }
-}
-
-IMPORTANT RULES:
-1. Only modify files that need changes based on the user's request
-2. Include the complete file content for modified files
-3. Do not include files that don't need changes
-4. Preserve the existing structure and styling unless specifically asked to change it
-5. Make minimal, targeted changes
-6. Return ONLY valid JSON, no markdown formatting or additional text`
-
-    const result = await model.generateContent(`${systemPrompt}\n\nUser prompt: ${prompt}`)
-    const response = await result.response
-    const text = response.text()
-
-    // Parse the JSON response with improved error handling
-    let parsedResponse
-    let jsonContent = text
-    
-    // Clean up the response text first
-    jsonContent = jsonContent.trim()
-    
-    // Try to find and extract JSON from the response
-    const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-    if (jsonMatch) {
-      jsonContent = jsonMatch[1].trim()
-    }
-
-      // Try to fix common JSON issues
-      try {
-        // Remove any trailing commas or incomplete objects
-        jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1')
-        
-        // Fix common JSON issues
-        jsonContent = jsonContent
-          .replace(/,\s*}/g, '}')  // Remove trailing commas before closing braces
-          .replace(/,\s*]/g, ']')  // Remove trailing commas before closing brackets
-          .replace(/([^\\])\\([^"\\\/bfnrt])/g, '$1\\\\$2')  // Fix unescaped backslashes
-          .replace(/\n/g, '\\n')   // Escape newlines
-          .replace(/\r/g, '\\r')   // Escape carriage returns
-          .replace(/\t/g, '\\t')   // Escape tabs
-        
-        // Try to complete incomplete JSON if it looks like it was truncated
-        if (!jsonContent.endsWith('}') && !jsonContent.endsWith(']')) {
-          // Count opening and closing braces/brackets
-          const openBraces = (jsonContent.match(/\{/g) || []).length
-          const closeBraces = (jsonContent.match(/\}/g) || []).length
-          const openBrackets = (jsonContent.match(/\[/g) || []).length
-          const closeBrackets = (jsonContent.match(/\]/g) || []).length
-          
-          // Add missing closing braces/brackets
-          const missingBraces = openBraces - closeBraces
-          const missingBrackets = openBrackets - closeBrackets
-          
-          if (missingBraces > 0) {
-            jsonContent += '}'.repeat(missingBraces)
-          }
-          if (missingBrackets > 0) {
-            jsonContent += ']'.repeat(missingBrackets)
-          }
-        }
-        
-        // Try to fix incomplete strings at the end
-        if (jsonContent.endsWith('"') === false && jsonContent.includes('"')) {
-          const lastQuoteIndex = jsonContent.lastIndexOf('"')
-          const afterLastQuote = jsonContent.substring(lastQuoteIndex + 1)
-          if (afterLastQuote.includes('}') || afterLastQuote.includes(']')) {
-            // String seems to be cut off, try to close it
-            const beforeLastQuote = jsonContent.substring(0, lastQuoteIndex + 1)
-            const afterQuote = jsonContent.substring(lastQuoteIndex + 1)
-            const closingPart = afterQuote.replace(/[^}\]]/g, '')
-            jsonContent = beforeLastQuote + '"' + closingPart
-          }
-        }
-        
-      parsedResponse = JSON.parse(jsonContent)
-    } catch (parseError) {
-      console.error('Failed to parse Gemini modification response:', parseError)
-      console.error('Raw response:', text)
-      console.error('Extracted JSON:', jsonContent)
-      
-      // Try to extract partial JSON before creating fallback
-      try {
-        // Try to find the start of the JSON object
-        const jsonStart = jsonContent.indexOf('{')
-        if (jsonStart !== -1) {
-          const partialJson = jsonContent.substring(jsonStart)
-          
-          // Try to find a complete files array
-          const filesStart = partialJson.indexOf('"files"')
-          if (filesStart !== -1) {
-            const beforeFiles = partialJson.substring(0, filesStart + 7) // Include "files"
-            const afterFiles = partialJson.substring(filesStart + 7)
-            
-            // Try to find the end of the files array
-            let bracketCount = 0
-            let inString = false
-            let escapeNext = false
-            let filesEnd = -1
-            
-            for (let i = 0; i < afterFiles.length; i++) {
-              const char = afterFiles[i]
-              
-              if (escapeNext) {
-                escapeNext = false
-                continue
-              }
-              
-              if (char === '\\') {
-                escapeNext = true
-                continue
-              }
-              
-              if (char === '"' && !escapeNext) {
-                inString = !inString
-                continue
-              }
-              
-              if (!inString) {
-                if (char === '[') bracketCount++
-                if (char === ']') bracketCount--
-                
-                if (bracketCount === 0 && char === ']') {
-                  filesEnd = i + 1
-                  break
-                }
-              }
-            }
-            
-            if (filesEnd !== -1) {
-              const completeJson = beforeFiles + ':' + afterFiles.substring(0, filesEnd) + '}'
-              try {
-                parsedResponse = JSON.parse(completeJson)
-                console.log('Successfully extracted partial JSON for modification')
-              } catch (extractError) {
-                throw extractError
-              }
-            } else {
-              throw new Error('Could not extract complete files array')
-            }
-          } else {
-            throw new Error('No files array found in response')
-          }
-        } else {
-          throw new Error('No JSON object found in response')
-        }
-      } catch (extractError) {
-        console.warn('Failed to extract partial JSON for modification, creating fallback response')
-        
-        // Create a fallback response for modification requests
-        parsedResponse = {
-          content: "Website modification completed successfully.",
-          files: [
-            {
-              path: "index.html",
-              content: "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Modified Website</title>\n</head>\n<body>\n    <h1>Website Modified</h1>\n    <p>Your website has been successfully modified.</p>\n</body>\n</html>",
-              type: "HTML"
-            }
-          ],
-          metadata: {
-            model: "gemini-2.0-flash-exp",
-            tokens: 0,
-            provider: "gemini"
-          }
-        }
-      }
-    }
-
-    // Validate the parsed response
-    if (!parsedResponse || typeof parsedResponse !== 'object') {
-      throw new Error('Invalid response structure from Gemini API')
-    }
-
-    // Process files to ensure they have the required fields and valid types
-    const processedFiles = Array.isArray(parsedResponse.files) 
-      ? parsedResponse.files.map((file: any) => ({
-          path: file.path || 'unknown',
-          content: file.content || '',
-          type: file.type === 'IMAGE' ? 'OTHER' : (file.type || 'OTHER'), // Map IMAGE to OTHER since it's not in FileType enum
-          size: file.size || (file.content ? file.content.length : 0)
-        }))
-      : []
-
-    return {
-      content: parsedResponse.content || 'Project modified successfully',
-      files: sortFilesByPriority(processedFiles),
-      metadata: {
-        model: GEMINI_MODEL,
-        tokens: 0,
-        provider: 'gemini'
-      }
-    }
-  } catch (error) {
-    console.error('Gemini modification API Error:', error)
-    
-    // Handle specific error types
-    if (error instanceof Error) {
-      if (error.message.includes('503') || error.message.includes('overloaded')) {
-        throw new Error('Gemini model is currently overloaded. Please try again in a few moments or switch to a different AI provider.')
-      } else if (error.message.includes('Invalid JSON')) {
-        throw new Error('Gemini returned an invalid response format. Please try again or switch to a different AI provider.')
-      } else if (error.message.includes('API key')) {
-        throw new Error('Gemini API key is invalid or missing. Please check your configuration.')
-      }
-    }
-    
-    throw new Error(`Gemini modification failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-  }
-}
-
+// Main generation function
 export async function generateWebsiteWithGemini(prompt: string, images?: string[]): Promise<AIResponse> {
   const startTime = Date.now()
   
@@ -581,6 +293,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
 
     return await tryWithFallbackModels(async (modelName) => {
       const chatSession = createCodeGenerationSession(modelName)
+      
       // Enhance prompt with image information if images are provided
       let enhancedPrompt = prompt
       if (images && images.length > 0) {
@@ -589,10 +302,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
 
       const result = await chatSession.sendMessage(enhancedPrompt)
       const text = result.response.text()
-      await logger.info('Gemini response sent >>>>>>>>>>>>> ', {
-        responsePreview: text
-      })
-
+      
       await logger.info('Gemini raw response received', {
         model: modelName,
         responseLength: text.length,
@@ -601,71 +311,29 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
 
       // Parse the JSON response with improved error handling
       let parsedResponse
-      let jsonContent = text
-      
-      // Clean up the response text first
-      jsonContent = jsonContent.trim()
+      let jsonContent = text.trim()
       
       // Try to find and extract JSON from the response
       const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-    if (jsonMatch) {
-      jsonContent = jsonMatch[1].trim()
-        await logger.info('Extracted JSON from markdown', {
-          model: modelName,
-          extractedLength: jsonContent.length
-        })
+      if (jsonMatch) {
+        jsonContent = jsonMatch[1].trim()
       }
       
       // Try to fix common JSON issues with comprehensive approach
       try {
         console.log('🔍 Parsing Gemini JSON response, length:', jsonContent.length)
-        console.log('📄 JSON preview:', jsonContent.substring(0, 200) + '...')
         
         // Use the comprehensive JSON cleaning function
         jsonContent = cleanJsonContent(jsonContent)
         console.log('🧹 Cleaned JSON length:', jsonContent.length)
         
-        // Try to complete incomplete JSON if it looks like it was truncated
-        if (!jsonContent.endsWith('}') && !jsonContent.endsWith(']')) {
-          // Count opening and closing braces/brackets
-          const openBraces = (jsonContent.match(/\{/g) || []).length
-          const closeBraces = (jsonContent.match(/\}/g) || []).length
-          const openBrackets = (jsonContent.match(/\[/g) || []).length
-          const closeBrackets = (jsonContent.match(/\]/g) || []).length
-          
-          // Add missing closing braces/brackets
-          const missingBraces = openBraces - closeBraces
-          const missingBrackets = openBrackets - closeBrackets
-          
-          if (missingBraces > 0) {
-            jsonContent += '}'.repeat(missingBraces)
-          }
-          if (missingBrackets > 0) {
-            jsonContent += ']'.repeat(missingBrackets)
-          }
-        }
-        
-        // Try to fix incomplete strings at the end
-        if (jsonContent.endsWith('"') === false && jsonContent.includes('"')) {
-          const lastQuoteIndex = jsonContent.lastIndexOf('"')
-          const afterLastQuote = jsonContent.substring(lastQuoteIndex + 1)
-          if (afterLastQuote.includes('}') || afterLastQuote.includes(']')) {
-            // String seems to be cut off, try to close it
-            const beforeLastQuote = jsonContent.substring(0, lastQuoteIndex + 1)
-            const afterQuote = jsonContent.substring(lastQuoteIndex + 1)
-            const closingPart = afterQuote.replace(/[^}\]]/g, '')
-            jsonContent = beforeLastQuote + '"' + closingPart
-          }
-        }
-        
-      parsedResponse = JSON.parse(jsonContent)
+        parsedResponse = JSON.parse(jsonContent)
         await logger.info('Successfully parsed Gemini response', {
           model: modelName,
           hasContent: !!parsedResponse.content,
-          hasDescription: !!parsedResponse.description,
           filesCount: Array.isArray(parsedResponse.files) ? parsedResponse.files.length : 0
         })
-    } catch (parseError) {
+      } catch (parseError) {
         await logger.error('Failed to parse Gemini response', parseError as Error, {
           model: modelName,
           rawResponse: text.substring(0, 1000) + '...',
@@ -678,13 +346,9 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
         try {
           console.log('🔍 Attempting regex-based file extraction from Gemini response')
           
-          // Use multiple regex patterns to extract file content
           const filePatterns = [
-            // Pattern 1: Standard file structure
             /"path":\s*"([^"]+)",\s*"content":\s*"((?:[^"\\]|\\.)*)"/g,
-            // Pattern 2: Alternative format
             /"path":\s*"([^"]+)",\s*"content":\s*"([^"]*(?:\\.[^"]*)*)"/g,
-            // Pattern 3: More flexible pattern
             /"path":\s*"([^"]+)",\s*"content":\s*"([^"]*(?:\\.[^"]*)*?)"/g
           ]
           
@@ -718,7 +382,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
               }
               
               if (extractedFiles.length > 0) {
-                break // Use the first pattern that found files
+                break
               }
             }
           }
@@ -726,7 +390,6 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
           if (extractedFiles.length > 0) {
             console.log(`🎉 Successfully extracted ${extractedFiles.length} files using regex patterns`)
             
-            // Extract content description
             const contentMatch = text.match(/"content":\s*"([^"]+)"/)
             const contentDescription = contentMatch ? contentMatch[1].replace(/\\"/g, '"') : 'Website generated successfully'
             
@@ -744,87 +407,8 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
             throw new Error('No files could be extracted using regex patterns')
           }
         } catch (extractError) {
-          console.log('❌ Regex extraction failed, falling back to basic response')
+          console.log('❌ Regex extraction failed, creating fallback response')
           
-          // Try to extract partial JSON before creating fallback
-        try {
-          await logger.warn('Attempting to extract partial JSON from response', {
-            model: modelName
-          })
-          
-          // Try to find the start of the JSON object
-          const jsonStart = jsonContent.indexOf('{')
-          if (jsonStart !== -1) {
-            const partialJson = jsonContent.substring(jsonStart)
-            
-            // Try to find a complete files array
-            const filesStart = partialJson.indexOf('"files"')
-            if (filesStart !== -1) {
-              const beforeFiles = partialJson.substring(0, filesStart + 7) // Include "files"
-              const afterFiles = partialJson.substring(filesStart + 7)
-              
-              // Try to find the end of the files array
-              let bracketCount = 0
-              let inString = false
-              let escapeNext = false
-              let filesEnd = -1
-              
-              for (let i = 0; i < afterFiles.length; i++) {
-                const char = afterFiles[i]
-                
-                if (escapeNext) {
-                  escapeNext = false
-                  continue
-                }
-                
-                if (char === '\\') {
-                  escapeNext = true
-                  continue
-                }
-                
-                if (char === '"' && !escapeNext) {
-                  inString = !inString
-                  continue
-                }
-                
-                if (!inString) {
-                  if (char === '[') bracketCount++
-                  if (char === ']') bracketCount--
-                  
-                  if (bracketCount === 0 && char === ']') {
-                    filesEnd = i + 1
-                    break
-                  }
-                }
-              }
-              
-              if (filesEnd !== -1) {
-                const completeJson = beforeFiles + ':' + afterFiles.substring(0, filesEnd) + '}'
-                try {
-                  parsedResponse = JSON.parse(completeJson)
-                  await logger.info('Successfully extracted partial JSON', {
-                    model: modelName,
-                    extractedFilesCount: parsedResponse.files?.length || 0
-                  })
-                } catch (extractError) {
-                  throw extractError
-                }
-              } else {
-                throw new Error('Could not extract complete files array')
-              }
-            } else {
-              throw new Error('No files array found in response')
-            }
-          } else {
-            throw new Error('No JSON object found in response')
-          }
-        } catch (extractError) {
-          await logger.warn('Failed to extract partial JSON, creating fallback response', {
-            model: modelName,
-            extractError: extractError instanceof Error ? extractError.message : String(extractError)
-          })
-          
-          // Create a minimal valid response
           const fallbackFiles = [
             {
               path: "index.html",
@@ -852,7 +436,6 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
             }
           ]
           
-          // Check for missing files even in fallback response
           const missingFiles = detectMissingReferencedFiles(fallbackFiles, text)
           if (missingFiles.length > 0) {
             console.log('⚠️ Found missing referenced files in Gemini fallback:', missingFiles.map(f => f.path))
@@ -869,20 +452,20 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
             fallbackFilesCount: parsedResponse.files.length
           })
         }
-    }
+      }
 
-    // Validate the parsed response
-    if (!parsedResponse || typeof parsedResponse !== 'object') {
-      throw new Error('Invalid response structure from Gemini API')
-    }
-    
+      // Validate the parsed response
+      if (!parsedResponse || typeof parsedResponse !== 'object') {
+        throw new Error('Invalid response structure from Gemini API')
+      }
+      
       // Validate and process files
       let processedFiles = []
       if (Array.isArray(parsedResponse.files)) {
         processedFiles = parsedResponse.files.map((file: any) => ({
           path: file.path || 'unknown',
           content: file.content || '',
-          type: file.type === 'IMAGE' ? 'OTHER' : (file.type || 'OTHER'), // Map IMAGE to OTHER since it's not in FileType enum
+          type: file.type === 'IMAGE' ? 'OTHER' : (file.type || 'OTHER'),
           size: file.size || (file.content ? file.content.length : 0)
         }))
       }
@@ -897,19 +480,18 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       const missingFiles = detectMissingReferencedFiles(processedFiles, text)
       if (missingFiles.length > 0) {
         console.log('⚠️ Found missing referenced files in Gemini generation:', missingFiles.map(f => f.path))
-        // Add the missing files to the processed files
         processedFiles.push(...missingFiles)
       }
 
       const aiResponse: AIResponse = {
         content: parsedResponse.content || parsedResponse.description || 'Website generated successfully',
         files: sortFilesByPriority(processedFiles),
-      metadata: {
+        metadata: {
           model: modelName,
-        tokens: 0, // Gemini doesn't provide token count in the same way
-        provider: 'gemini'
+          tokens: 0,
+          provider: 'gemini'
+        }
       }
-    }
 
       await logger.info('Gemini AI generation completed successfully', {
         model: modelName,
@@ -940,5 +522,107 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
     }
     
     throw new Error(`Gemini generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+// Modification function
+export async function generateWebsiteModificationWithGemini(
+  prompt: string,
+  currentFiles: Array<{ path: string; content: string; type: string }>
+): Promise<AIResponse> {
+  const startTime = Date.now()
+  
+  try {
+    await logger.info('Starting Gemini AI modification', {
+      model: GEMINI_MODEL,
+      promptLength: prompt.length,
+      currentFileCount: currentFiles.length
+    })
+
+    return await tryWithFallbackModels(async (modelName) => {
+      const chatSession = createCodeGenerationSession(modelName)
+      
+      const modificationPrompt = `You are modifying an existing website. Here are the current files:
+
+${currentFiles.map(file => `File: ${file.path}\nType: ${file.type}\nContent:\n${file.content}\n---`).join('\n')}
+
+Modification request: ${prompt}
+
+Please return the modified files in the same JSON format as before. Only include files that need to be changed or are new.`
+
+      const response = await chatSession.sendMessage(modificationPrompt)
+      const text = response.response.text()
+      
+      await logger.info('Gemini modification response received', {
+        model: modelName,
+        responseLength: text.length
+      })
+
+      // Parse the JSON response
+      let parsedResponse
+      let jsonContent = text.trim()
+      
+      const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+      if (jsonMatch) {
+        jsonContent = jsonMatch[1].trim()
+      }
+      
+      try {
+        jsonContent = cleanJsonContent(jsonContent)
+        parsedResponse = JSON.parse(jsonContent)
+      } catch (parseError) {
+        await logger.error('Failed to parse Gemini modification response', parseError as Error, {
+          model: modelName,
+          rawResponse: text.substring(0, 1000) + '...'
+        })
+        
+        // Fallback: return existing files
+        parsedResponse = {
+          content: 'Project modified successfully (partial response)',
+          files: currentFiles.map(file => ({
+            path: file.path,
+            content: file.content,
+            type: file.type,
+            size: file.content.length
+          }))
+        }
+      }
+
+      const aiResponse: AIResponse = {
+        content: parsedResponse.content || 'Project modified successfully',
+        files: sortFilesByPriority((parsedResponse.files || []).map((file: any) => ({
+          path: file.path,
+          content: file.content,
+          type: getFileTypeFromPath(file.path),
+          size: file.size || (file.content ? file.content.length : 0)
+        }))),
+        metadata: {
+          model: modelName,
+          tokens: 0,
+          provider: 'gemini'
+        }
+      }
+
+      const duration = Date.now() - startTime
+      
+      await logger.info('Gemini AI modification completed successfully', {
+        model: modelName,
+        duration,
+        fileCount: aiResponse.files.length,
+        tokens: aiResponse.metadata.tokens
+      })
+
+      return aiResponse
+    })
+  } catch (error) {
+    const duration = Date.now() - startTime
+    await logger.error('Gemini AI modification failed', error as Error, {
+      model: GEMINI_MODEL,
+      duration,
+      promptLength: prompt.length,
+      currentFileCount: currentFiles.length
+    })
+    
+    throw new Error(`Gemini modification failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
