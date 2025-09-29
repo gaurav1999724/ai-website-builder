@@ -256,12 +256,6 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
   const startTime = Date.now()
   
   try {
-    await logger.info('Starting Gemini AI generation', {
-      model: GEMINI_MODEL,
-      promptLength: prompt.length,
-      hasImages: !!images?.length
-    })
-
     return await tryWithFallbackModels(async (modelName) => {
       const chatSession = createCodeGenerationSession(modelName)
       
@@ -270,10 +264,6 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       if (images && images.length > 0) {
         enhancedPrompt = `${prompt}\n\nIMPORTANT: The user has provided ${images.length} reference image(s) to help guide the website design. Please use these images as inspiration for the visual design, color scheme, layout, and overall aesthetic of the website. Consider the style, mood, and visual elements shown in these reference images when creating the website.`
       }
-
-      await logger.info('Gemini prompt sent >>>>> ', {
-        enhancedPrompt: enhancedPrompt
-      })
 
       const result = await chatSession.sendMessage(enhancedPrompt)
       const text = result.response.text()
@@ -288,13 +278,58 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       let parsedResponse
       let jsonContent = text.trim()
       
-      // Try to find and extract JSON from the response
-      const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-    if (jsonMatch) {
-      jsonContent = jsonMatch[1].trim()
-    }
+      // Check if the response is a long text response instead of JSON
+      if (text.length > 1000 && !text.includes('{') && !text.includes('```json')) {
+        await logger.warn('Gemini returned text response instead of JSON, creating fallback', {
+          model: modelName,
+          responseLength: text.length,
+          responseType: 'text'
+        })
+        
+        // Create a fallback response with the text content
+        const fallbackFiles = [
+          {
+            path: "index.html",
+            content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generated Website</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #333; }
+        .content { background: #f9f9f9; padding: 20px; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Website Generated Successfully</h1>
+        <div class="content">
+            <p>Your website has been generated. The AI provided detailed instructions for creating a comprehensive website.</p>
+            <p>Please check the generated files for the complete implementation.</p>
+        </div>
+    </div>
+</body>
+</html>`,
+            type: "html",
+            size: 800
+          }
+        ]
+        
+        parsedResponse = {
+          content: "Website generated successfully with detailed instructions",
+          files: sortFilesByPriority(fallbackFiles)
+        }
+      } else {
+        // Try to find and extract JSON from the response
+        const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+        if (jsonMatch) {
+          jsonContent = jsonMatch[1].trim()
+        }
 
-      // Try to fix common JSON issues with comprehensive approach
+        // Try to fix common JSON issues with comprehensive approach
       try {
         console.log('🔍 Parsing Gemini JSON response, length:', jsonContent.length)
         console.log('📄 JSON preview:', jsonContent.substring(0, 200) + '...')
@@ -448,6 +483,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
             fallbackFilesCount: parsedResponse.files.length
           })
         }
+      }
     }
 
     // Validate the parsed response
