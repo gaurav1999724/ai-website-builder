@@ -169,26 +169,9 @@ function getFileTypeFromPath(path: string): string {
   }
 }
 
-// Configuration objects for different use cases
-const generationConfig = {
-  temperature: 1,
-  topP: 0.95,
-  topK: 40,
-  maxOutputTokens: 8192,
-}
-
+// Configuration for code generation
 const codeGenerationConfig = {
-  temperature: 0.7,
-  topP: 0.9,
-  topK: 32,
-  maxOutputTokens: 8192,
-}
-
-const enhancePromptConfig = {
-  temperature: 0.3,
-  topP: 0.8,
-  topK: 20,
-  maxOutputTokens: 1024,
+  maxOutputTokens: 50000,
 }
 
 const safetySettings = [
@@ -235,16 +218,7 @@ function createCodeGenerationSession(modelName: string) {
   })
   
   const chatSession = model.startChat({
-    history: [
-      {
-        role: "user",
-        parts: [{ text: "You are an EXPERT FULL-STACK WEB DEVELOPER with 10+ years of experience. You specialize in creating modern, responsive, and high-quality websites using HTML5, CSS3, JavaScript (ES6+), and modern web technologies.\n\nCRITICAL REQUIREMENTS - ADVANCED PROJECT GENERATION:\n\n1. **MULTIPLE FILES**: Always generate 8-15+ files including:\n   - Multiple HTML pages (index.html, about.html, services.html, contact.html, etc.)\n   - CSS files (main.css, components.css, responsive.css)\n   - JavaScript files (main.js, components.js, utils.js)\n   - Additional assets (README.md, package.json, manifest.json)\n\n2. **ADVANCED COMPONENTS**: Include modern web components like:\n   - Responsive navigation with mobile menu\n   - Interactive forms with validation\n   - Image galleries or carousels\n   - Modal dialogs\n   - Animations and transitions\n   - API integrations or data fetching\n\n3. **MODERN ARCHITECTURE**: Use:\n   - Semantic HTML5 elements\n   - CSS Grid and Flexbox for layouts\n   - Modern JavaScript (ES6+, async/await, modules)\n   - Responsive design principles\n   - Accessibility best practices (ARIA labels, keyboard navigation)\n\n4. **ENTERPRISE-LEVEL CODE QUALITY**:\n   - Clean, well-commented code\n   - Consistent naming conventions\n   - Proper error handling\n   - Performance optimizations\n   - Cross-browser compatibility\n\n5. **DETAILED FILE STRUCTURE**:\n   - index.html (main landing page)\n   - about.html, services.html, contact.html (additional pages)\n   - assets/css/main.css (primary styles)\n   - assets/css/components.css (component-specific styles)\n   - assets/js/main.js (main functionality)\n   - assets/js/components.js (reusable components)\n   - README.md (project documentation)\n   - package.json (dependencies and scripts)\n\n6. **ADVANCED DESIGN FEATURES**:\n   - Modern color schemes and typography\n   - Smooth animations and micro-interactions\n   - Professional layouts and spacing\n   - High-quality visual hierarchy\n   - Mobile-first responsive design\n\n7. **PERFORMANCE & OPTIMIZATION**:\n   - Optimized images and assets\n   - Efficient CSS and JavaScript\n   - Fast loading times\n   - SEO-friendly structure\n\n8. **ADVANCED FUNCTIONALITY**:\n   - Interactive elements\n   - Form validation and submission\n   - Dynamic content loading\n   - User experience enhancements\n\n9. **RESPONSIVE & ACCESSIBLE**:\n   - Mobile-first design approach\n   - Cross-device compatibility\n   - WCAG accessibility guidelines\n   - Keyboard navigation support\n\n10. **CODE QUALITY STANDARDS**:\n    - Clean, maintainable code\n    - Proper documentation\n    - Consistent formatting\n    - Best practices implementation\n\n🖼️ IMAGE REQUIREMENTS:\n- ALWAYS use external image URLs for placeholder images\n- Use Picsum (https://picsum.photos/) for generic images\n- Use Unsplash (https://unsplash.com/) for high-quality photos\n- For food websites: https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b\n- For business websites: https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d\n- For tech websites: https://images.unsplash.com/photo-1518709268805-4e9042af2176\n- For portfolio websites: https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d\n- NEVER use local image paths like 'assets/images/chef.jpg' - always use full URLs\n\nIMPORTANT: Return ONLY valid JSON in this exact format:\n{\n  \"content\": \"Brief description of the generated website\",\n  \"files\": [\n    {\n      \"path\": \"index.html\",\n      \"content\": \"Complete HTML content here\",\n      \"type\": \"HTML\"\n    },\n    {\n      \"path\": \"assets/css/main.css\",\n      \"content\": \"Complete CSS content here\",\n      \"type\": \"CSS\"\n    },\n    {\n      \"path\": \"assets/js/main.js\",\n      \"content\": \"Complete JavaScript content here\",\n      \"type\": \"JAVASCRIPT\"\n    }\n  ]\n}\n\nCRITICAL: Ensure the JSON is properly closed and all strings are properly escaped. Do not include any text outside the JSON structure." }]
-      },
-      {
-        role: "model",
-        parts: [{ text: "I understand. I am an EXPERT FULL-STACK WEB DEVELOPER and I will create advanced, multi-file website projects with modern architecture, enterprise-level code quality, and comprehensive functionality. I will always return valid JSON with 8-15+ files including multiple HTML pages, CSS files, JavaScript files, and additional assets. I will use external image URLs and ensure all code follows best practices for responsive design, accessibility, and performance optimization." }]
-      }
-    ]
+    history: []
   })
   
   return chatSession
@@ -297,11 +271,17 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
         enhancedPrompt = `${prompt}\n\nIMPORTANT: The user has provided ${images.length} reference image(s) to help guide the website design. Please use these images as inspiration for the visual design, color scheme, layout, and overall aesthetic of the website. Consider the style, mood, and visual elements shown in these reference images when creating the website.`
       }
 
+      await logger.info('Gemini prompt sent >>>>> ', {
+        enhancedPrompt: enhancedPrompt
+      })
+
       const result = await chatSession.sendMessage(enhancedPrompt)
       const text = result.response.text()
       
       await logger.info('Gemini raw response received', {
-        htmlContent: result,
+        model: modelName,
+        responseLength: text.length,
+        responsePreview: text.substring(0, 200) + '...'
       })
 
       // Parse the JSON response with improved error handling
@@ -310,18 +290,18 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
       
       // Try to find and extract JSON from the response
       const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-      if (jsonMatch) {
-        jsonContent = jsonMatch[1].trim()
-      }
-      
+    if (jsonMatch) {
+      jsonContent = jsonMatch[1].trim()
+    }
+
       // Try to fix common JSON issues with comprehensive approach
       try {
         console.log('🔍 Parsing Gemini JSON response, length:', jsonContent.length)
         console.log('📄 JSON preview:', jsonContent.substring(0, 200) + '...')
         
         // First try to parse without cleaning
-        try {
-          parsedResponse = JSON.parse(jsonContent)
+    try {
+      parsedResponse = JSON.parse(jsonContent)
           await logger.info('Successfully parsed Gemini response (no cleaning needed)', {
             model: modelName,
             hasContent: !!parsedResponse.content,
@@ -341,7 +321,7 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
             filesCount: Array.isArray(parsedResponse.files) ? parsedResponse.files.length : 0
           })
         }
-      } catch (parseError) {
+    } catch (parseError) {
         await logger.error('Failed to parse Gemini response', parseError as Error, {
           model: modelName,
           rawResponse: text.substring(0, 1000) + '...',
@@ -468,13 +448,13 @@ export async function generateWebsiteWithGemini(prompt: string, images?: string[
             fallbackFilesCount: parsedResponse.files.length
           })
         }
-      }
+    }
 
-      // Validate the parsed response
-      if (!parsedResponse || typeof parsedResponse !== 'object') {
-        throw new Error('Invalid response structure from Gemini API')
-      }
-      
+    // Validate the parsed response
+    if (!parsedResponse || typeof parsedResponse !== 'object') {
+      throw new Error('Invalid response structure from Gemini API')
+    }
+
       // Validate and process files
       let processedFiles = []
       if (Array.isArray(parsedResponse.files)) {
@@ -566,6 +546,11 @@ Modification request: ${prompt}
 
 Please return the modified files in the same JSON format as before. Only include files that need to be changed or are new.`
 
+      await logger.info('Gemini modification prompt sent', {
+        model: modelName,
+        promptLength: modificationPrompt.length
+      })
+
       const response = await chatSession.sendMessage(modificationPrompt)
       const text = response.response.text()
       
@@ -579,14 +564,14 @@ Please return the modified files in the same JSON format as before. Only include
       let jsonContent = text.trim()
       
       const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-      if (jsonMatch) {
-        jsonContent = jsonMatch[1].trim()
-      }
-      
-      try {
+    if (jsonMatch) {
+      jsonContent = jsonMatch[1].trim()
+    }
+
+    try {
         jsonContent = cleanJsonContent(jsonContent)
-        parsedResponse = JSON.parse(jsonContent)
-      } catch (parseError) {
+      parsedResponse = JSON.parse(jsonContent)
+    } catch (parseError) {
         await logger.error('Failed to parse Gemini modification response', parseError as Error, {
           model: modelName,
           rawResponse: text.substring(0, 1000) + '...'
@@ -617,7 +602,7 @@ Please return the modified files in the same JSON format as before. Only include
           tokens: 0,
           provider: 'gemini'
         }
-      }
+    }
 
       const duration = Date.now() - startTime
       
