@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -88,7 +88,7 @@ model ProjectFile {
   id        String   @id @default(cuid())
   projectId String
   path      String
-  content   String   @db.LongText
+  content   String   @db.Text
   type      FileType
   size      Int
   createdAt DateTime @default(now())
@@ -105,7 +105,7 @@ model ProjectGeneration {
   projectId   String
   prompt      String   @db.Text
   aiProvider  String
-  response    String?  @db.LongText
+  response    String?  @db.Text
   status      GenerationStatus @default(PENDING)
   error       String?  @db.Text
   createdAt   DateTime @default(now())
@@ -234,7 +234,7 @@ model AIPrompt {
   type        PromptType
   title       String
   description String?     @db.Text
-  systemPrompt String     @db.LongText
+  systemPrompt String     @db.Text
   isActive    Boolean     @default(true)
   version     Int         @default(1)
   createdBy   String
