@@ -47,8 +47,27 @@ export default function SignUpPage() {
     setLoading(true)
 
     try {
-      // For demo purposes, we'll just sign in with credentials
-      // In a real app, you'd create the user account first
+      // Call the custom signup API
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || 'Account creation failed')
+        return
+      }
+
+      // After successful signup, sign in the user
       const result = await signIn('credentials', {
         email,
         password,
@@ -56,12 +75,14 @@ export default function SignUpPage() {
       })
 
       if (result?.error) {
-        toast.error('Account creation failed')
+        toast.error('Account created but sign in failed. Please try signing in manually.')
+        router.push('/auth/signin')
       } else {
         toast.success('Account created successfully!')
         router.push('/dashboard')
       }
     } catch (error) {
+      console.error('Signup error:', error)
       toast.error('An error occurred during sign up')
     } finally {
       setLoading(false)
