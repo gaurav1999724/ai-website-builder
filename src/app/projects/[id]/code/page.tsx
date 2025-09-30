@@ -1059,17 +1059,10 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
                               enabled: true,
                               independentColorPoolPerBracketType: false,
                             },
-                            bracketPairGuides: {
-                              bracketPairs: false,
-                              bracketPairsHorizontal: "active",
-                              highlightActiveBracketPair: true,
-                              indentation: true,
-                              highlightActiveIndentation: true,
-                            },
                             stickyTabStops: false,
                             codeLens: true,
                             colorDecorators: true,
-                            colorDecoratorActivatedOn: "clickAndHover",
+                            colorDecoratorsActivatedOn: "clickAndHover",
                             colorDecoratorsLimit: 500,
                             comments: {
                               insertSpace: true,
@@ -1096,7 +1089,6 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
                               cursorMoveOnType: true,
                               seedSearchStringFromSelection: "always",
                               autoFindInSelection: "never",
-                              globalFindClipboard: false,
                               addExtraSpaceOnTop: true,
                               loop: true,
                             },
@@ -1124,9 +1116,6 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
                               hidingDelay: 300,
                               above: true,
                             },
-                            lightbulb: {
-                              enabled: "onCode",
-                            },
                             lineDecorationsWidth: 10,
                             lineNumbers: "on",
                             lineNumbersMinChars: 5,
@@ -1134,7 +1123,7 @@ export default function CodeEditorPage({ params }: { params: { id: string } }) {
                             matchBrackets: "always",
                             minimap: {
                               enabled: true,
-                              autohide: false,
+                              autohide: "none", // @ts-ignore
                               size: "proportional",
                               side: "right",
                               showSlider: "mouseover",
