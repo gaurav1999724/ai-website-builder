@@ -43,7 +43,7 @@ A complete AI-powered website builder platform built with Next.js, TypeScript, a
 ### Backend
 - **Next.js API Routes** - Serverless API endpoints
 - **Prisma ORM** - Type-safe database access
-- **MySQL** - Relational database
+- **PostgreSQL** - Relational database
 - **NextAuth.js** - Authentication framework
 
 ### AI Integration
@@ -78,7 +78,7 @@ A complete AI-powered website builder platform built with Next.js, TypeScript, a
    Fill in your environment variables:
    ```env
    # Database
-   DATABASE_URL="mysql://username:password@localhost:3306/ai_website_builder"
+   DATABASE_URL="postgresql://username:password@localhost:5432/ai_website_builder"
    
    # NextAuth.js
    NEXTAUTH_URL="http://localhost:3000"
@@ -113,7 +113,7 @@ GOOGLE_GEMINI_API_KEY="your-google-gemini-api-key"
 
 ## 🗄 Database Schema
 
-The application uses a MySQL database with the following main entities:
+The application uses a PostgreSQL database with the following main entities:
 
 - **Users**: Authentication and profile information
 - **Projects**: Website projects with metadata

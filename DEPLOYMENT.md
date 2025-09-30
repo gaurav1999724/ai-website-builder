@@ -8,7 +8,7 @@ Before deploying, ensure you have:
 
 - **Node.js 18+** installed
 - **npm** or **yarn** package manager
-- **Database** (PostgreSQL, MySQL, SQLite, etc.)
+- **Database** (PostgreSQL)
 - **Environment variables** configured
 
 ## 🛠️ Available Commands

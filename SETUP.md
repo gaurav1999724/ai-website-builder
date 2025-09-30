@@ -8,7 +8,7 @@ Before you begin, make sure you have the following installed:
 
 - **Node.js** (v18 or higher)
 - **npm** or **yarn**
-- **MySQL** (v8.0 or higher)
+- **PostgreSQL** (v12 or higher)
 - **Git**
 
 ## Quick Start
@@ -38,7 +38,7 @@ Edit `.env.local` with your configuration:
 
 ```env
 # Database
-DATABASE_URL="mysql://username:password@localhost:3306/ai_website_builder"
+DATABASE_URL="postgresql://username:password@localhost:5432/ai_website_builder"
 
 # NextAuth.js
 NEXTAUTH_URL="http://localhost:3000"
@@ -59,7 +59,7 @@ GOOGLE_GEMINI_API_KEY="your-google-gemini-api-key"
 
 ### 4. Set Up the Database
 
-Create a MySQL database:
+Create a PostgreSQL database:
 
 ```sql
 CREATE DATABASE ai_website_builder;
@@ -84,21 +84,20 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Database Configuration
 
-1. **Install MySQL**
-   - Download from [mysql.com](https://dev.mysql.com/downloads/)
-   - Or use Docker: `docker run --name mysql -e MYSQL_ROOT_PASSWORD=password -p 3306:3306 -d mysql:8.0`
+1. **Install PostgreSQL**
+   - Download from [postgresql.org](https://www.postgresql.org/download/)
+   - Or use Docker: `docker run --name postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:15`
 
 2. **Create Database**
    ```sql
    CREATE DATABASE ai_website_builder;
-   CREATE USER 'ai_builder'@'localhost' IDENTIFIED BY 'your_password';
-   GRANT ALL PRIVILEGES ON ai_website_builder.* TO 'ai_builder'@'localhost';
-   FLUSH PRIVILEGES;
+   CREATE USER ai_builder WITH PASSWORD 'your_password';
+   GRANT ALL PRIVILEGES ON DATABASE ai_website_builder TO ai_builder;
    ```
 
 3. **Update DATABASE_URL**
    ```env
-   DATABASE_URL="mysql://ai_builder:your_password@localhost:3306/ai_website_builder"
+   DATABASE_URL="postgresql://ai_builder:your_password@localhost:5432/ai_website_builder"
    ```
 
 ### AI API Setup
@@ -197,7 +196,7 @@ src/
 ### Common Issues
 
 1. **Database Connection Error**
-   - Check MySQL is running
+   - Check PostgreSQL is running
    - Verify DATABASE_URL format
    - Ensure database exists
 
