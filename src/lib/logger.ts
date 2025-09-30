@@ -30,12 +30,20 @@ class Logger {
 
   constructor() {
     this.logDir = path.join(process.cwd(), 'logs')
-    this.ensureLogDirectory()
+    // Only initialize directory during runtime, not build time
+    if (process.env.NODE_ENV !== 'production' || process.env.VERCEL !== '1') {
+      this.ensureLogDirectory()
+    }
   }
 
   private ensureLogDirectory(): void {
-    if (!fs.existsSync(this.logDir)) {
-      fs.mkdirSync(this.logDir, { recursive: true })
+    try {
+      if (!fs.existsSync(this.logDir)) {
+        fs.mkdirSync(this.logDir, { recursive: true })
+      }
+    } catch (error) {
+      // Silently fail during build time or when file system is not available
+      console.warn('Could not create log directory:', error)
     }
   }
 
@@ -45,8 +53,13 @@ class Logger {
     const levelDir = path.join(this.logDir, levelFolder)
     
     // Ensure the level-specific directory exists
-    if (!fs.existsSync(levelDir)) {
-      fs.mkdirSync(levelDir, { recursive: true })
+    try {
+      if (!fs.existsSync(levelDir)) {
+        fs.mkdirSync(levelDir, { recursive: true })
+      }
+    } catch (error) {
+      // Silently fail during build time or when file system is not available
+      console.warn('Could not create level directory:', error)
     }
     
     return path.join(levelDir, `logs-${date}.log`)
@@ -79,6 +92,11 @@ class Logger {
 
   private async writeToFile(fileName: string, content: string): Promise<void> {
     try {
+      // Skip file operations during build time
+      if (process.env.NODE_ENV === 'production' && process.env.VERCEL === '1') {
+        return
+      }
+
       // Check if file exists and rotate if needed
       if (fs.existsSync(fileName)) {
         const stats = fs.statSync(fileName)
@@ -89,12 +107,18 @@ class Logger {
 
       fs.appendFileSync(fileName, content)
     } catch (error) {
-      console.error('Failed to write to log file:', error)
+      // Silently fail during build time or when file system is not available
+      console.warn('Failed to write to log file:', error)
     }
   }
 
   private async rotateLogFile(fileName: string): Promise<void> {
     try {
+      // Skip file operations during build time
+      if (process.env.NODE_ENV === 'production' && process.env.VERCEL === '1') {
+        return
+      }
+
       const dir = path.dirname(fileName) // This is now the level-specific folder
       const baseFileName = path.basename(fileName, '.log') // e.g., 'logs-2025-09-26'
       const extension = '.log'
@@ -117,7 +141,8 @@ class Logger {
       const rotatedFile = path.join(dir, `${baseFileName}.1${extension}`)
       fs.renameSync(fileName, rotatedFile)
     } catch (error) {
-      console.error('Failed to rotate log file:', error)
+      // Silently fail during build time or when file system is not available
+      console.warn('Failed to rotate log file:', error)
     }
   }
 
