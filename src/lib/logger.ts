@@ -52,6 +52,11 @@ class Logger {
     const levelFolder = level.charAt(0).toUpperCase() + level.slice(1).toLowerCase()
     const levelDir = path.join(this.logDir, levelFolder)
     
+    // Skip directory creation in Vercel production environment
+    if (process.env.NODE_ENV === 'production' && process.env.VERCEL === '1') {
+      return path.join(levelDir, `logs-${date}.log`)
+    }
+    
     // Ensure the level-specific directory exists
     try {
       if (!fs.existsSync(levelDir)) {
