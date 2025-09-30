@@ -12,11 +12,18 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp'
 // Fallback models in case of overload
 const FALLBACK_MODELS = ['gemini-2.0-flash-exp', 'gemini-2.0-flash-001', 'gemini-1.5-flash']
 
-if (!process.env.GOOGLE_GEMINI_API_KEY) {
-  throw new Error('GOOGLE_GEMINI_API_KEY environment variable is required')
-}
+// Lazy initialization to avoid build-time errors
+let genAI: GoogleGenerativeAI | null = null
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY)
+function getGenAI(): GoogleGenerativeAI {
+  if (!genAI) {
+    if (!process.env.GOOGLE_GEMINI_API_KEY) {
+      throw new Error('GOOGLE_GEMINI_API_KEY environment variable is not set')
+    }
+    genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY)
+  }
+  return genAI
+}
 
 // Helper function to clean and fix JSON content
 function cleanJsonContent(jsonString: string): string {
@@ -211,7 +218,7 @@ export interface AIResponse {
 
 // Function to create a code generation session
 function createCodeGenerationSession(modelName: string) {
-  const model = genAI.getGenerativeModel({ 
+  const model = getGenAI().getGenerativeModel({ 
     model: modelName,
     generationConfig: codeGenerationConfig,
     safetySettings: safetySettings

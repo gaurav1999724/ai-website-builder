@@ -1,8 +1,19 @@
 import Anthropic from '@anthropic-ai/sdk'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+// Lazy initialization to avoid build-time errors
+let anthropic: Anthropic | null = null
+
+function getAnthropic(): Anthropic {
+  if (!anthropic) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY environment variable is not set')
+    }
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+  }
+  return anthropic
+}
 
 export interface AIResponse {
   content: string
@@ -61,7 +72,7 @@ Requirements:
 
 Focus on creating a professional, modern website that matches the user's requirements.`
 
-    const message = await anthropic.messages.create({
+    const message = await getAnthropic().messages.create({
       model: "claude-3-sonnet-20240229",
       max_tokens: 8000,
       system: systemPrompt,
