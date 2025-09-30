@@ -27,10 +27,12 @@ import {
   Activity,
   Database,
   Bot,
-  ArrowLeft
+  ArrowLeft,
+  FileSearch
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProfileDropdown } from '@/components/profile-dropdown'
+import LogsDashboard from '@/components/logs/logs-dashboard'
 
 interface AIPrompt {
   id: string
@@ -217,7 +219,7 @@ export default function AdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-gray-800">
+          <TabsList className="grid w-full grid-cols-5 bg-gray-800">
             <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600">
               <BarChart3 className="h-4 w-4 mr-2" />
               Overview
@@ -229,6 +231,10 @@ export default function AdminDashboard() {
             <TabsTrigger value="users" className="data-[state=active]:bg-blue-600">
               <Users className="h-4 w-4 mr-2" />
               Users
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="data-[state=active]:bg-blue-600">
+              <FileSearch className="h-4 w-4 mr-2" />
+              Logs
             </TabsTrigger>
             <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600">
               <Settings className="h-4 w-4 mr-2" />
@@ -600,6 +606,10 @@ export default function AdminDashboard() {
                 </Card>
               ))}
             </div>
+          </TabsContent>
+
+          <TabsContent value="logs" className="space-y-6">
+            <LogsDashboard />
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
