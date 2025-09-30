@@ -6,6 +6,25 @@ import { compare } from "bcryptjs"
 import { z } from "zod"
 import { logger } from "@/lib/logger"
 
+// Simple logging wrapper that only logs in runtime
+const safeLog = {
+  info: (message: string, data?: any) => {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
+      logger.info(message, data).catch(() => {})
+    }
+  },
+  warn: (message: string, data?: any) => {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
+      logger.warn(message, data).catch(() => {})
+    }
+  },
+  error: (message: string, error?: Error, data?: any) => {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
+      logger.error(message, error, data).catch(() => {})
+    }
+  }
+}
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
@@ -34,7 +53,8 @@ export const authProviders = [
       try {
         const { email, password } = loginSchema.parse(credentials)
 
-        await logger.info('Attempting credentials authentication', {
+        // Log authentication attempt (non-blocking)
+        safeLog.info('Attempting credentials authentication', {
           email,
           hasPassword: !!password
         })
@@ -53,12 +73,12 @@ export const authProviders = [
         })
 
         if (!user) {
-          await logger.warn('User not found during authentication', { email })
+          safeLog.warn('User not found during authentication', { email })
           return null
         }
 
         if (!user.password) {
-          await logger.warn('User has no password set', { 
+          safeLog.warn('User has no password set', { 
             email, 
             userId: user.id 
           })
@@ -68,14 +88,23 @@ export const authProviders = [
         const isPasswordValid = await compare(password, user.password)
 
         if (!isPasswordValid) {
-          await logger.warn('Invalid password provided', { 
+          safeLog.warn('Invalid password provided', { 
             email, 
             userId: user.id 
           })
           return null
         }
 
-        await logger.info('Credentials authentication successful', {
+        // Check if user is active
+        if (!user.isActive) {
+          safeLog.warn('User account is inactive', { 
+            email, 
+            userId: user.id 
+          })
+          return null
+        }
+
+        safeLog.info('Credentials authentication successful', {
           email,
           userId: user.id
         })
@@ -89,9 +118,12 @@ export const authProviders = [
           isActive: user.isActive,
         }
       } catch (error) {
-        await logger.error('Credentials authentication failed', error as Error, {
+        // Log error but don't let it block authentication
+        safeLog.error('Credentials authentication failed', error as Error, {
           email: credentials?.email
         })
+        
+        // Return null for any authentication failure
         return null
       }
     }

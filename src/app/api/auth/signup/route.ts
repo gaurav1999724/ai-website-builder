@@ -4,6 +4,25 @@ import { hash } from 'bcryptjs'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 
+// Simple logging wrapper that only logs in runtime
+const safeLog = {
+  info: (message: string, data?: any) => {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
+      logger.info(message, data).catch(() => {})
+    }
+  },
+  warn: (message: string, data?: any) => {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
+      logger.warn(message, data).catch(() => {})
+    }
+  },
+  error: (message: string, error?: Error, data?: any) => {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
+      logger.error(message, error, data).catch(() => {})
+    }
+  }
+}
+
 const signupSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email'),
@@ -15,7 +34,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { name, email, password } = signupSchema.parse(body)
 
-    await logger.info('User signup attempt', {
+    safeLog.info('User signup attempt', {
       email,
       name
     })
@@ -26,7 +45,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingUser) {
-      await logger.warn('Signup attempt with existing email', { email })
+      safeLog.warn('Signup attempt with existing email', { email })
       return NextResponse.json(
         { error: 'User already exists' },
         { status: 400 }
@@ -48,7 +67,7 @@ export async function POST(request: NextRequest) {
     // Also create a session or handle immediate login if needed
     // For now, just return the user data
 
-    await logger.info('User created successfully', {
+    safeLog.info('User created successfully', {
       userId: user.id,
       email: user.email,
       name: user.name
@@ -63,7 +82,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    await logger.error('Signup error', error as Error)
+    safeLog.error('Signup error', error as Error)
     
     if (error instanceof z.ZodError) {
       return NextResponse.json(
