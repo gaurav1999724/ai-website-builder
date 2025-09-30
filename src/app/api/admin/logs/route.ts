@@ -8,21 +8,7 @@ import { safeLog } from '@/lib/safe-logger'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user is admin
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true }
-    })
-
-    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // Public access - no authentication required
 
     const { searchParams } = new URL(request.url)
     const level = searchParams.get('level') || 'all'
@@ -107,8 +93,7 @@ export async function GET(request: NextRequest) {
     const total = allLogs.length
     const paginatedLogs = allLogs.slice(offset, offset + limit)
 
-    safeLog.info('Admin fetched logs', {
-      userId: session.user.id,
+    safeLog.info('Public access - logs fetched', {
       level,
       total,
       returned: paginatedLogs.length
@@ -132,21 +117,7 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user is admin
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true }
-    })
-
-    if (!user || user.role !== 'SUPER_ADMIN') {
-      return NextResponse.json({ error: 'Forbidden - Super Admin required' }, { status: 403 })
-    }
+    // Public access - no authentication required for log deletion
 
     const { searchParams } = new URL(request.url)
     const level = searchParams.get('level')
@@ -203,8 +174,7 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    safeLog.info('Admin deleted logs', {
-      userId: session.user.id,
+    safeLog.info('Public access - logs deleted', {
       level,
       olderThan,
       deletedCount

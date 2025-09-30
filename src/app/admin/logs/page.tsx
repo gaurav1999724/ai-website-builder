@@ -1,74 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import LogViewer from '@/components/logs/log-viewer'
-import { AlertCircle, Shield } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 
 export default function AdminLogsPage() {
-  const { data: session, status } = useSession()
-  const router = useRouter()
-  const [isAuthorized, setIsAuthorized] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (status === 'loading') return
-
-    if (!session) {
-      router.push('/auth/signin')
-      return
-    }
-
-    // Check if user is admin
-    if (session.user?.role !== 'ADMIN' && session.user?.role !== 'SUPER_ADMIN') {
-      setIsAuthorized(false)
-      setLoading(false)
-      return
-    }
-
-    setIsAuthorized(true)
-    setLoading(false)
-  }, [session, status, router])
-
-  if (status === 'loading' || loading) {
-    return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-4 w-96" />
-        </div>
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-32" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!isAuthorized) {
-    return (
-      <div className="container mx-auto p-6">
-        <Alert variant="destructive">
-          <Shield className="h-4 w-4" />
-          <AlertDescription>
-            You don't have permission to access this page. Admin privileges are required.
-          </AlertDescription>
-        </Alert>
-      </div>
-    )
-  }
 
   return (
     <div className="container mx-auto p-6">

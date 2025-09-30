@@ -8,21 +8,7 @@ import { safeLog } from '@/lib/safe-logger'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user is admin
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true }
-    })
-
-    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // Public access - no authentication required
 
     const { searchParams } = new URL(request.url)
     const level = searchParams.get('level')
@@ -133,8 +119,7 @@ export async function GET(request: NextRequest) {
         filename = `logs-${new Date().toISOString().split('T')[0]}.json`
     }
 
-    safeLog.info('Admin downloaded logs', {
-      userId: session.user.id,
+    safeLog.info('Public access - logs downloaded', {
       level,
       format,
       count: allLogs.length
