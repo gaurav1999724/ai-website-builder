@@ -124,7 +124,30 @@ export async function POST(
     let userId = session?.user?.id
     
     if (!userId) {
-      userId = 'cmfw73dsc0000tg96at3bmxex'
+      // Find the first active admin user for unauthenticated requests
+      const adminUser = await prisma.user.findFirst({
+        where: {
+          role: 'ADMIN',
+          isActive: true
+        },
+        select: { id: true, email: true }
+      })
+      
+      if (adminUser) {
+        userId = adminUser.id
+      } else {
+        // Fallback to first active user if no admin found
+        const fallbackUser = await prisma.user.findFirst({
+          where: { isActive: true },
+          select: { id: true, email: true }
+        })
+        
+        if (fallbackUser) {
+          userId = fallbackUser.id
+        } else {
+          throw new Error('No active users found in database')
+        }
+      }
       await logger.info('Using test user for unauthenticated streaming modification', {
         endpoint: '/api/projects/[id]/generate/stream',
         method: 'POST',

@@ -93,7 +93,9 @@ Enhanced: "Enhance the visual design and user experience with the following impr
       const enhancementRequest = this.buildEnhancementRequest(originalPrompt, context)
       
       // Call ChatGPT API for enhancement
-      const enhancedPrompt = await this.callChatGPTAPI(enhancementRequest)
+      // const enhancedPrompt = await this.callChatGPTAPI(enhancementRequest)
+
+      const enhancedPrompt = originalPrompt
       
       const processingTime = Date.now() - startTime
       

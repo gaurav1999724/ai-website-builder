@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 import { extractRequestContext } from '@/lib/utils'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   const requestContext = extractRequestContext(request)
@@ -14,7 +15,30 @@ export async function POST(request: NextRequest) {
     let userId = session?.user?.id
     
     if (!userId) {
-      userId = 'cmfw73dsc0000tg96at3bmxex'
+      // Find the first active admin user for unauthenticated requests
+      const adminUser = await prisma.user.findFirst({
+        where: {
+          role: 'ADMIN',
+          isActive: true
+        },
+        select: { id: true, email: true }
+      })
+      
+      if (adminUser) {
+        userId = adminUser.id
+      } else {
+        // Fallback to first active user if no admin found
+        const fallbackUser = await prisma.user.findFirst({
+          where: { isActive: true },
+          select: { id: true, email: true }
+        })
+        
+        if (fallbackUser) {
+          userId = fallbackUser.id
+        } else {
+          throw new Error('No active users found in database')
+        }
+      }
       await logger.info('Using test user for unauthenticated prompt enhancement', {
         endpoint: '/api/ai/enhance-prompt',
         testUserId: userId,

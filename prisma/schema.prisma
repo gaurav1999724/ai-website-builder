@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -16,15 +13,14 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -48,10 +44,9 @@ model User {
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-
-  accounts Account[]
-  sessions Session[]
-  projects Project[]
+  accounts      Account[]
+  projects      Project[]
+  sessions      Session[]
 }
 
 model VerificationToken {
@@ -63,22 +58,21 @@ model VerificationToken {
 }
 
 model Project {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   title       String
-  description String?  @db.Text
-  prompt      String   @db.Text
-  status      ProjectStatus @default(GENERATING)
+  description String?
+  prompt      String
+  status      ProjectStatus       @default(GENERATING)
   userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  files        ProjectFile[]
-  generations  ProjectGeneration[]
-  history      ProjectHistory[]
-  components   ProjectComponent[]
-  config       ProjectConfig?
-  deployments  ProjectDeployment[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  components  ProjectComponent[]
+  config      ProjectConfig?
+  deployments ProjectDeployment[]
+  files       ProjectFile[]
+  generations ProjectGeneration[]
+  history     ProjectHistory[]
 
   @@index([userId])
   @@index([status])
@@ -88,30 +82,28 @@ model ProjectFile {
   id        String   @id @default(cuid())
   projectId String
   path      String
-  content   String   @db.Text
+  content   String
   type      FileType
   size      Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, path])
   @@index([projectId])
 }
 
 model ProjectGeneration {
-  id          String   @id @default(cuid())
-  projectId   String
-  prompt      String   @db.Text
-  aiProvider  String
-  response    String?  @db.Text
-  status      GenerationStatus @default(PENDING)
-  error       String?  @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id         String           @id @default(cuid())
+  projectId  String
+  prompt     String
+  aiProvider String
+  response   String?
+  status     GenerationStatus @default(PENDING)
+  error      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  project    Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([status])
@@ -121,13 +113,90 @@ model ProjectHistory {
   id        String   @id @default(cuid())
   projectId String
   action    String
-  details   String?  @db.Text
+  details   String?
   createdAt DateTime @default(now())
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([createdAt])
+}
+
+model ProjectComponent {
+  id          String   @id @default(cuid())
+  projectId   String
+  componentId String
+  name        String
+  category    String
+  code        Json
+  preview     String
+  tags        Json     @default("[]")
+  addedAt     DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([category])
+}
+
+model ProjectConfig {
+  id                   String   @id @default(cuid())
+  projectId            String   @unique
+  buildTool            String   @default("vite")
+  framework            String   @default("vanilla")
+  bundler              String   @default("esbuild")
+  outputDir            String   @default("dist")
+  publicPath           String   @default("/")
+  minify               Boolean  @default(true)
+  sourceMap            Boolean  @default(false)
+  hotReload            Boolean  @default(true)
+  platform             String   @default("vercel")
+  domain               String   @default("")
+  customDomain         String   @default("")
+  environment          String   @default("production")
+  buildCommand         String   @default("npm run build")
+  outputDirectory      String   @default("dist")
+  nodeVersion          String   @default("18")
+  environmentVariables Json     @default("{}")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ProjectDeployment {
+  id           String           @id @default(cuid())
+  projectId    String
+  platform     String
+  branch       String           @default("main")
+  customDomain String           @default("")
+  status       DeploymentStatus @default(PENDING)
+  url          String           @default("")
+  commit       String           @default("")
+  logs         Json             @default("[]")
+  createdAt    DateTime         @default(now())
+  completedAt  DateTime?
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AIPrompt {
+  id           String     @id @default(cuid())
+  name         String     @unique
+  provider     AIProvider
+  type         PromptType
+  title        String
+  description  String?
+  systemPrompt String
+  isActive     Boolean    @default(true)
+  version      Int        @default(1)
+  createdBy    String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([provider])
+  @@index([type])
+  @@index([isActive])
 }
 
 enum ProjectStatus {
@@ -157,93 +226,12 @@ enum GenerationStatus {
   FAILED
 }
 
-model ProjectComponent {
-  id          String   @id @default(cuid())
-  projectId   String
-  componentId String
-  name        String
-  category    String
-  code        Json
-  preview     String   @db.Text
-  tags        Json     @default("[]")
-  addedAt     DateTime @default(now())
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-  @@index([category])
-}
-
-model ProjectConfig {
-  id                    String   @id @default(cuid())
-  projectId             String   @unique
-  buildTool             String   @default("vite")
-  framework             String   @default("vanilla")
-  bundler               String   @default("esbuild")
-  outputDir             String   @default("dist")
-  publicPath            String   @default("/")
-  minify                Boolean  @default(true)
-  sourceMap             Boolean  @default(false)
-  hotReload             Boolean  @default(true)
-  platform              String   @default("vercel")
-  domain                String   @default("")
-  customDomain          String   @default("")
-  environment           String   @default("production")
-  buildCommand          String   @default("npm run build")
-  outputDirectory       String   @default("dist")
-  nodeVersion           String   @default("18")
-  environmentVariables  Json     @default("{}")
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-}
-
-model ProjectDeployment {
-  id           String            @id @default(cuid())
-  projectId    String
-  platform     String
-  branch       String            @default("main")
-  customDomain String            @default("")
-  status       DeploymentStatus  @default(PENDING)
-  url          String            @default("")
-  commit       String            @default("")
-  logs         Json              @default("[]")
-  createdAt    DateTime          @default(now())
-  completedAt  DateTime?
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-  @@index([status])
-  @@index([createdAt])
-}
-
 enum DeploymentStatus {
   PENDING
   BUILDING
   DEPLOYING
   SUCCESS
   FAILED
-}
-
-model AIPrompt {
-  id          String      @id @default(cuid())
-  name        String      @unique
-  provider    AIProvider
-  type        PromptType
-  title       String
-  description String?     @db.Text
-  systemPrompt String     @db.Text
-  isActive    Boolean     @default(true)
-  version     Int         @default(1)
-  createdBy   String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  @@index([provider])
-  @@index([type])
-  @@index([isActive])
 }
 
 enum UserRole {

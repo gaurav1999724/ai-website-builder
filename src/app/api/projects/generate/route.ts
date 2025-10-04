@@ -59,14 +59,44 @@ export async function POST(request: NextRequest) {
     let userId = session?.user?.id
     
     if (!userId) {
-      // Use the test user ID for unauthenticated requests
-      userId = 'cmfw73dsc0000tg96at3bmxex'
-      await logger.info('Using test user for unauthenticated project generation', {
-        endpoint: '/api/projects/generate',
-        method: 'POST',
-        testUserId: userId,
-        ...requestContext
+      // Find the first active admin user for unauthenticated requests
+      const adminUser = await prisma.user.findFirst({
+        where: {
+          role: 'ADMIN',
+          isActive: true
+        },
+        select: { id: true, email: true }
       })
+      
+      if (adminUser) {
+        userId = adminUser.id
+        await logger.info('Using admin user for unauthenticated project generation', {
+          endpoint: '/api/projects/generate',
+          method: 'POST',
+          adminUserId: userId,
+          adminEmail: adminUser.email,
+          ...requestContext
+        })
+      } else {
+        // Fallback to first active user if no admin found
+        const fallbackUser = await prisma.user.findFirst({
+          where: { isActive: true },
+          select: { id: true, email: true }
+        })
+        
+        if (fallbackUser) {
+          userId = fallbackUser.id
+          await logger.info('Using fallback user for unauthenticated project generation', {
+            endpoint: '/api/projects/generate',
+            method: 'POST',
+            fallbackUserId: userId,
+            fallbackEmail: fallbackUser.email,
+            ...requestContext
+          })
+        } else {
+          throw new Error('No active users found in database')
+        }
+      }
     }
 
     const body = await request.json()
@@ -95,6 +125,27 @@ export async function POST(request: NextRequest) {
     let generation: any
 
     try {
+      // Verify the user exists before creating project
+      const userExists = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, isActive: true }
+      })
+
+      if (!userExists) {
+        throw new Error(`User with ID ${userId} does not exist in database`)
+      }
+
+      if (!userExists.isActive) {
+        throw new Error(`User with ID ${userId} is not active`)
+      }
+
+      await logger.info('User verification passed', {
+        userId: userId,
+        userEmail: userExists.email,
+        userActive: userExists.isActive,
+        ...requestContext
+      })
+
       // Create project record
       project = await prisma.project.create({
         data: {

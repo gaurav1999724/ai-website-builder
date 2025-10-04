@@ -89,6 +89,34 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { title, description, prompt } = body
 
+    // Verify the user exists before creating project
+    const userExists = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, email: true, isActive: true }
+    })
+
+    if (!userExists) {
+      console.error(`User with ID ${session.user.id} does not exist in database`)
+      return NextResponse.json(
+        { error: 'User not found in database' },
+        { status: 400 }
+      )
+    }
+
+    if (!userExists.isActive) {
+      console.error(`User with ID ${session.user.id} is not active`)
+      return NextResponse.json(
+        { error: 'User account is not active' },
+        { status: 400 }
+      )
+    }
+
+    console.log('User verification passed:', {
+      userId: session.user.id,
+      userEmail: userExists.email,
+      userActive: userExists.isActive
+    })
+
     const project = await prisma.project.create({
       data: {
         title,

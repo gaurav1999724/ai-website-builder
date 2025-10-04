@@ -1,6 +1,6 @@
 import { generateWebsiteWithOpenAI } from './openai'
 import { generateWebsiteWithAnthropic } from './anthropic'
-import { generateWebsiteWithGemini } from './gemini'
+import { generateWebsiteWithGemini, generateWebsiteWithGeminiFast } from './gemini'
 import { generateWebsiteWithCerebras, generateWebsiteModificationWithCerebras } from './cerebras'
 import { generateWebsiteModificationWithGemini } from './gemini'
 import { logger } from '../logger'
@@ -54,7 +54,7 @@ export async function generateWebsite(
         result = await generateWebsiteWithAnthropic(prompt, images)
         break
       case 'gemini':
-        result = await generateWebsiteWithGemini(prompt, images)
+        result = await generateWebsiteWithGeminiFast(prompt, images)
         break
       default:
         throw new Error(`Unsupported AI provider: ${provider}`)

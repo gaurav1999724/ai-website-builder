@@ -1,4 +1,8 @@
 import OpenAI from 'openai'
+import { getSystemPrompt } from './prompt-helper'
+import { AIProvider, PromptType } from '@prisma/client'
+import { logger } from '../logger'
+import { CurrentFile } from './index'
 
 // Lazy initialization to avoid build-time errors
 let openai: OpenAI | null = null
@@ -10,7 +14,7 @@ function getOpenAI(): OpenAI {
     }
     openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
-      timeout: 30000, // 30 second timeout
+      timeout: 300000, // 30 second timeout
       maxRetries: 2, // Retry failed requests
     })
   }
@@ -68,28 +72,34 @@ export interface AIResponse {
 
 export async function generateWebsiteWithOpenAI(prompt: string, images?: string[]): Promise<AIResponse> {
   try {
-    // Optimized system prompt for faster response
-    const systemPrompt = `Generate a complete website. Return ONLY valid JSON:
+  
+    // Fetch dynamic prompt from database
+    const systemPrompt = await getSystemPrompt(AIProvider.OPENAI, PromptType.WEBSITE_GENERATION)
 
-{
-  "files": [
-    {"path": "index.html", "content": "HTML", "type": "HTML"},
-    {"path": "style.css", "content": "CSS", "type": "CSS"},
-    {"path": "script.js", "content": "JS", "type": "JAVASCRIPT"}
-  ],
-  "description": "Brief description"
-}
+    // Enhance prompt with image information if images are provided
+    let enhancedPrompt = prompt
+    if (images && images.length > 0) {
+      enhancedPrompt = `${prompt}\n\nIMPORTANT: The user has provided ${images.length} reference image(s) to help guide the website design. Please use these images as inspiration for the visual design, color scheme, layout, and overall aesthetic of the website. Consider the style, mood, and visual elements shown in these reference images when creating the website.`
+    }
 
-Requirements: Modern HTML5/CSS3/JS, responsive, semantic HTML, clean code. 3-5 files minimum.`
+    await logger.info('OpenAI fast AI generation >>>>>>>>>>>>  ', {
+      provider: 'user',
+      content: enhancedPrompt
+    })
+
+    await logger.info('OpenAI fast AI generation >>>>>>>>>>>>  ', {
+      provider: 'system',
+      content: systemPrompt
+    })
 
     const completion = await getOpenAI().chat.completions.create({
-      model: "gpt-4o-mini-2024-07-18", // Fastest model
+      model: "gpt-3.5-turbo", // Fastest model
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: prompt }
+        { role: "user", content: enhancedPrompt }
       ],
-      temperature: 0.3, // Lower temperature for faster, more consistent responses
-      max_tokens: 6000, // Reduced for faster response
+      temperature: 0.5, // Lower temperature for faster, more consistent responses
+      max_tokens: 13360, // Reduced for faster response
       stream: false, // Ensure non-streaming for faster processing
     })
 
@@ -141,6 +151,12 @@ Requirements: Modern HTML5/CSS3/JS, responsive, semantic HTML, clean code. 3-5 f
       size: file.content ? file.content.length : 0
     }))
 
+    await logger.info('OpenAI generation completed', {
+      provider: 'openai',
+      filesGenerated: processedFiles.length,
+      tokensUsed: completion.usage?.total_tokens || 0
+    })
+
     return {
       content: parsedResponse.description || 'Website generated successfully',
       files: processedFiles,
@@ -159,9 +175,18 @@ Requirements: Modern HTML5/CSS3/JS, responsive, semantic HTML, clean code. 3-5 f
 // Optimized function for fastest possible response
 export async function generateWebsiteWithOpenAIFast(prompt: string): Promise<AIResponse> {
   try {
-    // Ultra-minimal prompt for maximum speed
-    const systemPrompt = `Generate website. Return JSON only:
-{"files":[{"path":"index.html","content":"HTML","type":"HTML"},{"path":"style.css","content":"CSS","type":"CSS"}],"description":"Website"}`
+    await logger.info('OpenAI fast AI generation >>>>>>>>>>>>  ', {
+      provider: 'user',
+      content: prompt
+    })
+
+    // Fetch dynamic prompt from database
+    const systemPrompt = await getSystemPrompt(AIProvider.OPENAI, PromptType.WEBSITE_GENERATION)
+
+    await logger.info('OpenAI fast AI generation >>>>>>>>>>>>  ', {
+      provider: 'system',
+      content: systemPrompt
+    })
 
     const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini-2024-07-18",
@@ -187,6 +212,12 @@ export async function generateWebsiteWithOpenAIFast(prompt: string): Promise<AIR
     const parsedResponse = JSON.parse(jsonContent)
     const files = Array.isArray(parsedResponse.files) ? parsedResponse.files : []
     
+    await logger.info('OpenAI fast generation completed', {
+      provider: 'openai',
+      filesGenerated: files.length,
+      tokensUsed: completion.usage?.total_tokens || 0
+    })
+    
     return {
       content: parsedResponse.description || 'Website generated',
       files: files.map((file: any) => ({
@@ -204,5 +235,113 @@ export async function generateWebsiteWithOpenAIFast(prompt: string): Promise<AIR
   } catch (error) {
     console.error('OpenAI Fast API Error:', error)
     throw new Error(`OpenAI fast generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+// Website modification function using OpenAI
+export async function modifyWebsiteWithOpenAI(
+  prompt: string, 
+  currentFiles: CurrentFile[]
+): Promise<AIResponse> {
+  try {
+    await logger.info('Starting OpenAI website modification', {
+      provider: 'openai',
+      promptLength: prompt.length,
+      currentFilesCount: currentFiles.length
+    })
+
+    // Create context from current files
+    const currentFilesContext = currentFiles.map(file => 
+      `File: ${file.path}\nType: ${file.type}\nContent:\n${file.content}\n---\n`
+    ).join('\n')
+
+    // Fetch dynamic prompt from database
+    const baseSystemPrompt = await getSystemPrompt(AIProvider.OPENAI, PromptType.WEBSITE_MODIFICATION)
+    
+    // Replace placeholders in the prompt
+    const systemPrompt = baseSystemPrompt
+      .replace('{currentFiles}', currentFilesContext)
+      .replace('{prompt}', prompt)
+
+    const completion = await getOpenAI().chat.completions.create({
+      model: "gpt-4o-mini-2024-07-18",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 6000,
+      stream: false,
+    })
+
+    const response = completion.choices[0]?.message?.content
+    if (!response) {
+      throw new Error('No response from OpenAI')
+    }
+
+    // Fast JSON extraction and parsing
+    let jsonContent = response.trim()
+    
+    // Quick check for markdown code blocks and extract JSON
+    if (jsonContent.includes('```')) {
+      const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+      if (jsonMatch) {
+        jsonContent = jsonMatch[1].trim()
+      }
+    }
+
+    // Parse JSON with error handling
+    let parsedResponse
+    try {
+      parsedResponse = JSON.parse(jsonContent)
+    } catch (parseError) {
+      // Fallback: try to extract JSON from response
+      const fallbackMatch = response.match(/\{[\s\S]*\}/)
+      if (fallbackMatch) {
+        try {
+          parsedResponse = JSON.parse(fallbackMatch[0])
+        } catch {
+          throw new Error('Invalid JSON response from OpenAI API')
+        }
+      } else {
+        throw new Error('Invalid JSON response from OpenAI API')
+      }
+    }
+
+    // Fast validation and processing
+    if (!parsedResponse || typeof parsedResponse !== 'object') {
+      throw new Error('Invalid response structure from OpenAI API')
+    }
+    
+    // Optimized file processing
+    const files = Array.isArray(parsedResponse.files) ? parsedResponse.files : []
+    const processedFiles = files.map((file: any) => ({
+      path: file.path || 'index.html',
+      content: file.content || '',
+      type: file.type || getFileTypeFromPath(file.path || 'index.html'),
+      size: file.content ? file.content.length : 0
+    }))
+
+    await logger.info('OpenAI website modification completed', {
+      provider: 'openai',
+      filesGenerated: processedFiles.length,
+      tokensUsed: completion.usage?.total_tokens || 0
+    })
+
+    return {
+      content: parsedResponse.content || parsedResponse.description || 'Website modified successfully',
+      files: processedFiles,
+      metadata: {
+        model: completion.model,
+        tokens: completion.usage?.total_tokens || 0,
+        provider: 'openai'
+      }
+    }
+  } catch (error) {
+    await logger.error('OpenAI modification error', error as Error, {
+      provider: 'openai'
+    })
+    console.error('OpenAI Modification API Error:', error)
+    throw new Error(`OpenAI modification failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
