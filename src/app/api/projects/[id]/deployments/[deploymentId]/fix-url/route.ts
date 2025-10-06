@@ -41,7 +41,7 @@ export async function POST(
       }
     })
 
-    if ((!deployment) && (!deployment.url)) {
+    if (!deployment || !deployment.url) {
       return NextResponse.json({ error: 'Deployment not found' }, { status: 404 })
     }
 
