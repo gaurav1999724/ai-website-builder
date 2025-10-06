@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { CodeViewer } from '@/components/code-editor/code-viewer'
 import MonacoEditor from '@monaco-editor/react'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -48,7 +49,11 @@ import {
   ChevronRight,
   ChevronDown,
   Folder,
-  FolderOpen
+  FolderOpen,
+  Rocket,
+  Cloud,
+  Package,
+  Globe
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatRelativeTime, formatDateTime, formatTime, formatDateOnly } from '@/lib/utils'
@@ -103,7 +108,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   const [isGettingSuggestion, setIsGettingSuggestion] = useState(false)
   const [suggestionResponse, setSuggestionResponse] = useState('')
   const [showSuggestion, setShowSuggestion] = useState(false)
-  const       [promptHistory, setPromptHistory] = useState<Array<{
+  const [promptHistory, setPromptHistory] = useState<Array<{
         id: string
         prompt: string
         type: 'create' | 'update'
@@ -113,6 +118,10 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       }>>([])
   const [selectedFile, setSelectedFile] = useState<any>(null)
   const [fileContent, setFileContent] = useState('')
+  
+  // Deployment state
+  const [isDeploying, setIsDeploying] = useState(false)
+  const [deploymentStatus, setDeploymentStatus] = useState('')
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState<string>('')
 
@@ -407,6 +416,67 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       }
     } catch (error) {
       toast.error('Failed to download project')
+    }
+  }
+
+  // Deployment functions
+  const handleQuickDeploy = async (platform: string) => {
+    if (!project) return
+
+    setIsDeploying(true)
+    setDeploymentStatus(`Deploying to ${platform}...`)
+
+    try {
+      const response = await fetch(`/api/projects/${params.id}/deploy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          platform,
+          branch: 'main'
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to start deployment')
+      }
+
+      const result = await response.json()
+      toast.success(`Deployment to ${platform} started successfully!`)
+      
+      // Open deployment page to monitor progress
+      window.open(`/projects/${params.id}/deploy`, '_blank')
+      
+    } catch (error) {
+      console.error('Deployment error:', error)
+      toast.error(`Failed to deploy to ${platform}`)
+    } finally {
+      setIsDeploying(false)
+      setDeploymentStatus('')
+    }
+  }
+
+  const handleExportProject = async (platform: string) => {
+    try {
+      const response = await fetch(`/api/projects/${params.id}/export?platform=${platform}`)
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${project?.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${platform}.zip`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        toast.success(`Project exported for ${platform}!`)
+      } else {
+        throw new Error('Export failed')
+      }
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error('Failed to export project')
     }
   }
 
@@ -1536,6 +1606,49 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                     Fullscreen
                   </Button>
                 </div>
+                
+                {/* Deployment Button */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      disabled={isDeploying || !project || project.status !== 'COMPLETED'}
+                      className="bg-green-600 hover:bg-green-700 text-white border-green-500 hover:border-green-400 disabled:opacity-50"
+                      title={!project || project.status !== 'COMPLETED' ? 'Complete project generation first' : 'Deploy your project'}
+                    >
+                      {isDeploying ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          {deploymentStatus}
+                        </>
+                      ) : (
+                        <>
+                          <Rocket className="h-4 w-4 mr-2" />
+                          Deploy
+                        </>
+                      )}
+                      <ChevronDown className="h-4 w-4 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 bg-gray-800 border-gray-700">
+                    <DropdownMenuItem 
+                      onClick={() => handleQuickDeploy('vercel')}
+                      className="text-white hover:bg-gray-700 focus:bg-gray-700"
+                    >
+                      <Cloud className="h-4 w-4 mr-2 text-blue-400" />
+                      Deploy to Vercel
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-gray-700" />
+                    <DropdownMenuItem 
+                      onClick={() => router.push(`/projects/${params.id}/deploy`)}
+                      className="text-white hover:bg-gray-700 focus:bg-gray-700"
+                    >
+                      <Settings className="h-4 w-4 mr-2 text-gray-400" />
+                      Deployment Dashboard
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 
                 <ProfileDropdown />
               </div>

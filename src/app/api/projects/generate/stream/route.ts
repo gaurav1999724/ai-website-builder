@@ -5,8 +5,8 @@ import { prisma } from '@/lib/prisma'
 import { logger, extractRequestContext } from '@/lib/logger'
 import { formatDateOnly } from '@/lib/utils'
 import { z } from 'zod'
-import { AIProvider as PrismaAIProvider } from '@prisma/client'
-import { AIProvider } from '@/lib/ai'
+// import { AIProvider as PrismaAIProvider } from '@prisma/client'
+import { AIProvider, generateProjectTitle } from '@/lib/ai'
 
 const generateSchema = z.object({
   prompt: z.string().min(1, 'Prompt is required'),
@@ -202,10 +202,29 @@ export async function POST(request: NextRequest) {
         ...requestContext
       })
 
+      // Generate AI-based title if not provided
+      let projectTitle = title
+      if (!projectTitle) {
+        try {
+          projectTitle = await generateProjectTitle(prompt, provider as AIProvider)
+          await logger.info('AI-generated project title', {
+            originalPrompt: prompt.substring(0, 100),
+            generatedTitle: projectTitle,
+            provider
+          })
+        } catch (error) {
+          await logger.warn('Failed to generate AI title, using fallback', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            prompt: prompt.substring(0, 100)
+          })
+          projectTitle = `Project-${formatDateOnly(new Date())}`
+        }
+      }
+
       // Create project record
       project = await prisma.project.create({
         data: {
-          title: title || `Project ${formatDateOnly(new Date())}`,
+          title: projectTitle,
           prompt: prompt, // Use original user prompt, not enhanced
           userId: userId,
           status: 'GENERATING',
@@ -217,7 +236,7 @@ export async function POST(request: NextRequest) {
         data: {
           projectId: project.id,
           prompt: prompt, // Use original user prompt, not enhanced
-          aiProvider: provider.toUpperCase() as PrismaAIProvider,
+          aiProvider: provider.toUpperCase() as any,
           status: 'PROCESSING',
         },
       })

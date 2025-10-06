@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { generateWebsite, AIProvider } from '@/lib/ai'
+import { generateWebsite, AIProvider, generateProjectTitle } from '@/lib/ai'
 import { enhanceUserPrompt } from '@/lib/ai/prompt-enhancer'
 import { logger, extractRequestContext } from '@/lib/logger'
 import { formatDateOnly } from '@/lib/utils'
@@ -146,10 +146,29 @@ export async function POST(request: NextRequest) {
         ...requestContext
       })
 
+      // Generate AI-based title if not provided
+      let projectTitle = title
+      if (!projectTitle) {
+        try {
+          projectTitle = await generateProjectTitle(prompt, provider as AIProvider)
+          await logger.info('AI-generated project title', {
+            originalPrompt: prompt.substring(0, 100),
+            generatedTitle: projectTitle,
+            provider
+          })
+        } catch (error) {
+          await logger.warn('Failed to generate AI title, using fallback', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            prompt: prompt.substring(0, 100)
+          })
+          projectTitle = `Project-${formatDateOnly(new Date())}`
+        }
+      }
+
       // Create project record
       project = await prisma.project.create({
         data: {
-          title: title || `Project ${formatDateOnly(new Date())}`,
+          title: projectTitle,
           prompt: prompt, // Use original user prompt, not enhanced
           userId: userId,
           status: 'GENERATING',

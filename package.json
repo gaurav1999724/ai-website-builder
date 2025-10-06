@@ -36,7 +36,8 @@
     "test:auth": "node scripts/test-auth.js",
     "test:auth:create": "node scripts/test-auth.js create",
     "test:auth:list": "node scripts/test-auth.js list",
-    "test:db": "node scripts/test-auth.js test"
+    "test:db": "node scripts/test-auth.js test",
+    "test:deployment": "node scripts/test-deployment.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.63.0",

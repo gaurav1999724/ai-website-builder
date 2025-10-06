@@ -22,13 +22,22 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get deployment status
+    // Get deployment details
     const deployment = await prisma.projectDeployment.findFirst({
       where: {
         id: params.deploymentId,
         project: {
           id: params.id,
           userId: session.user.id
+        }
+      },
+      include: {
+        project: {
+          select: {
+            id: true,
+            title: true,
+            userId: true
+          }
         }
       }
     })
@@ -51,18 +60,92 @@ export async function GET(
         id: deployment.id,
         status: deployment.status,
         platform: deployment.platform,
-        branch: deployment.branch,
-        customDomain: deployment.customDomain,
         url: deployment.url,
+        branch: deployment.branch,
         commit: deployment.commit,
         logs: deployment.logs,
         createdAt: deployment.createdAt,
-        completedAt: deployment.completedAt
+        completedAt: deployment.completedAt,
+        customDomain: deployment.customDomain
       }
     })
 
   } catch (error) {
     await logger.error('Failed to get deployment status', error as Error, {
+      projectId: params.id,
+      deploymentId: params.deploymentId,
+      ...requestContext
+    })
+    
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string; deploymentId: string } }
+) {
+  const requestContext = extractRequestContext(request)
+  
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      await logger.warn('Unauthorized deployment deletion attempt', {
+        endpoint: `/api/projects/${params.id}/deployments/${params.deploymentId}`,
+        method: 'DELETE',
+        ...requestContext
+      })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Verify deployment exists and user has access
+    const deployment = await prisma.projectDeployment.findFirst({
+      where: {
+        id: params.deploymentId,
+        project: {
+          id: params.id,
+          userId: session.user.id
+        }
+      }
+    })
+
+    if (!deployment) {
+      return NextResponse.json({ error: 'Deployment not found' }, { status: 404 })
+    }
+
+    // Delete deployment
+    await prisma.projectDeployment.delete({
+      where: { id: params.deploymentId }
+    })
+
+    // Add to project history
+    await prisma.projectHistory.create({
+      data: {
+        projectId: params.id,
+        action: 'DEPLOYMENT_DELETED',
+        details: `Deleted deployment to ${deployment.platform}`,
+      },
+    })
+
+    await logger.info('Deployment deleted', {
+      projectId: params.id,
+      deploymentId: params.deploymentId,
+      userId: session.user.id,
+      platform: deployment.platform,
+      ...requestContext
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'Deployment deleted successfully'
+    })
+
+  } catch (error) {
+    await logger.error('Failed to delete deployment', error as Error, {
       projectId: params.id,
       deploymentId: params.deploymentId,
       ...requestContext

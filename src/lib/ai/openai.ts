@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { getSystemPrompt } from './prompt-helper'
-import { AIProvider, PromptType } from '@prisma/client'
+// import { AIProvider, PromptType } from '@prisma/client'
 import { logger } from '../logger'
 import { CurrentFile } from './index'
 
@@ -74,7 +74,7 @@ export async function generateWebsiteWithOpenAI(prompt: string, images?: string[
   try {
   
     // Fetch dynamic prompt from database
-    const systemPrompt = await getSystemPrompt(AIProvider.OPENAI, PromptType.WEBSITE_GENERATION)
+    const systemPrompt = await getSystemPrompt('OPENAI' as any, 'WEBSITE_GENERATION' as any)
 
     // Enhance prompt with image information if images are provided
     let enhancedPrompt = prompt
@@ -181,7 +181,7 @@ export async function generateWebsiteWithOpenAIFast(prompt: string): Promise<AIR
     })
 
     // Fetch dynamic prompt from database
-    const systemPrompt = await getSystemPrompt(AIProvider.OPENAI, PromptType.WEBSITE_GENERATION)
+    const systemPrompt = await getSystemPrompt('OPENAI' as any, 'WEBSITE_GENERATION' as any)
 
     await logger.info('OpenAI fast AI generation >>>>>>>>>>>>  ', {
       provider: 'system',
@@ -256,7 +256,7 @@ export async function modifyWebsiteWithOpenAI(
     ).join('\n')
 
     // Fetch dynamic prompt from database
-    const baseSystemPrompt = await getSystemPrompt(AIProvider.OPENAI, PromptType.WEBSITE_MODIFICATION)
+    const baseSystemPrompt = await getSystemPrompt('OPENAI' as any, 'WEBSITE_MODIFICATION' as any)
     
     // Replace placeholders in the prompt
     const systemPrompt = baseSystemPrompt
@@ -343,5 +343,53 @@ export async function modifyWebsiteWithOpenAI(
     })
     console.error('OpenAI Modification API Error:', error)
     throw new Error(`OpenAI modification failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+// Generate project title using OpenAI
+export async function generateTitleWithOpenAI(prompt: string): Promise<string> {
+  try {
+    const systemPrompt = `You are an expert at creating concise, descriptive project titles. 
+    
+Based on the user's prompt, generate a short, professional project title that captures the essence of what they want to build.
+
+Requirements:
+- Keep it under 50 characters
+- Use title case (Capitalize Each Word)
+- Be descriptive but concise
+- Use hyphens instead of spaces
+- Focus on the main purpose or theme
+- Examples: "E-Commerce-Store", "Portfolio-Website", "Blog-Platform", "Restaurant-Menu"
+
+Return ONLY the title, no additional text or formatting.`
+
+    const completion = await getOpenAI().chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 50,
+    })
+
+    const title = completion.choices[0]?.message?.content?.trim()
+    if (!title) {
+      throw new Error('No title generated from OpenAI')
+    }
+
+    // Clean up the title
+    return title
+      .replace(/[^\w\s-]/g, '') // Remove special characters except hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+      .substring(0, 50) // Limit length
+
+  } catch (error) {
+    await logger.error('OpenAI title generation failed', error as Error, {
+      promptLength: prompt.length
+    })
+    throw error
   }
 }

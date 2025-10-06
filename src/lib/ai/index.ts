@@ -1,4 +1,4 @@
-import { generateWebsiteWithOpenAI } from './openai'
+import { generateWebsiteWithOpenAI, generateTitleWithOpenAI } from './openai'
 import { generateWebsiteWithAnthropic } from './anthropic'
 import { generateWebsiteWithGemini, generateWebsiteWithGeminiFast } from './gemini'
 import { generateWebsiteWithCerebras, generateWebsiteModificationWithCerebras } from './cerebras'
@@ -96,6 +96,85 @@ export async function generateWebsiteWithAllProviders(prompt: string): Promise<A
   }
 
   return results
+}
+
+// Generate AI-based project title from prompt
+export async function generateProjectTitle(prompt: string, provider: AIProvider = 'openai'): Promise<string> {
+  try {
+    await logger.info('Generating AI project title', {
+      provider,
+      promptLength: prompt.length
+    })
+
+    let title: string
+
+    switch (provider) {
+      case 'openai':
+        title = await generateTitleWithOpenAI(prompt)
+        break
+      case 'anthropic':
+        title = await generateTitleWithAnthropic(prompt)
+        break
+      case 'gemini':
+        title = await generateTitleWithGemini(prompt)
+        break
+      case 'cerebras':
+        title = await generateTitleWithCerebras(prompt)
+        break
+      default:
+        throw new Error(`Unsupported AI provider for title generation: ${provider}`)
+    }
+
+    await logger.info('AI project title generated successfully', {
+      provider,
+      originalPrompt: prompt.substring(0, 100),
+      generatedTitle: title
+    })
+
+    return title
+  } catch (error) {
+    await logger.error('Failed to generate AI project title', error as Error, {
+      provider,
+      promptLength: prompt.length
+    })
+    
+    // Fallback to a simple title based on prompt
+    return generateFallbackTitle(prompt)
+  }
+}
+
+// Placeholder functions for other AI providers (using OpenAI as fallback)
+async function generateTitleWithAnthropic(prompt: string): Promise<string> {
+  // For now, use OpenAI as fallback
+  return generateTitleWithOpenAI(prompt)
+}
+
+async function generateTitleWithGemini(prompt: string): Promise<string> {
+  // For now, use OpenAI as fallback
+  return generateTitleWithOpenAI(prompt)
+}
+
+async function generateTitleWithCerebras(prompt: string): Promise<string> {
+  // For now, use OpenAI as fallback
+  return generateTitleWithOpenAI(prompt)
+}
+
+// Fallback title generation
+function generateFallbackTitle(prompt: string): string {
+  // Extract key words from prompt and create a simple title
+  const words = prompt.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 3)
+    .slice(0, 3)
+  
+  if (words.length === 0) {
+    return `Project-${new Date().toISOString().slice(0, 10)}`
+  }
+  
+  return words.map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1)
+  ).join('-')
 }
 
 export async function generateWebsiteModification(
