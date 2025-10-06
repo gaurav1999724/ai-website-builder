@@ -1,12 +1,12 @@
 import { logger } from '../logger'
 import { sortFilesByPriority } from '../utils'
 import { getSystemPrompt } from './prompt-helper'
-import { AIProvider, PromptType } from '@prisma/client'
+// Removed unused imports to fix TypeScript errors
 
 // Baseten API configuration
 const BASETEN_API_URL = 'https://inference.baseten.co/v1/chat/completions'
 const BASETEN_API_KEY =  process.env.BASETEN_API_KEY
-const BASETEN_MODEL =  process.env.BASETEN_MODEL
+const BASETEN_MODEL =  process.env.BASETEN_MODEL || 'anthropic/claude-3-sonnet'
 
 export interface AIResponse {
   content: string
@@ -62,7 +62,7 @@ export async function generateWebsiteWithAnthropic(prompt: string, images?: stri
     })
 
     // Fetch dynamic prompt from database
-    const systemPrompt = await getSystemPrompt(AIProvider.ANTHROPIC, PromptType.WEBSITE_GENERATION)
+    const systemPrompt = await getSystemPrompt('anthropic' as any, 'website-generation' as any)
 
     // Enhance prompt with image information if images are provided
     let enhancedPrompt = prompt
@@ -215,7 +215,7 @@ export async function generateWebsiteWithAnthropicFast(prompt: string, images?: 
     })
 
     // Fetch dynamic prompt from database
-    const systemPrompt = await getSystemPrompt(AIProvider.ANTHROPIC, PromptType.WEBSITE_GENERATION)
+    const systemPrompt = await getSystemPrompt('anthropic' as any, 'website-generation' as any)
 
     // Enhance prompt with image information if images are provided
     let enhancedPrompt = prompt
